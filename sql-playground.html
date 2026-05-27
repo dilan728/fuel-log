@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SQL Playground</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/sql-wasm.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #22263a;
+      --border: #2e3248;
+      --accent: #6c63ff;
+      --accent2: #4ecca3;
+      --text: #e2e8f0;
+      --muted: #8892a4;
+      --error: #f87171;
+      --success: #4ade80;
+      --warning: #fbbf24;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Header */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .logo { display: flex; align-items: center; gap: 10px; }
+    .logo-icon {
+      width: 32px; height: 32px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+    }
+    .logo h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+    .logo span { color: var(--accent2); }
+
+    .header-badges { display: flex; gap: 8px; }
+    .badge {
+      font-size: 11px; padding: 4px 10px; border-radius: 20px;
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--muted); cursor: pointer; transition: all 0.15s;
+    }
+    .badge:hover, .badge.active { background: var(--accent); border-color: var(--accent); color: white; }
+
+    /* Main layout */
+    .main { display: flex; flex: 1; overflow: hidden; }
+
+    /* Sidebar */
+    .sidebar {
+      width: 260px; flex-shrink: 0;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    .sidebar-tabs {
+      display: flex; border-bottom: 1px solid var(--border);
+    }
+    .sidebar-tab {
+      flex: 1; padding: 10px 8px; font-size: 12px; font-weight: 600;
+      text-align: center; cursor: pointer; color: var(--muted);
+      border-bottom: 2px solid transparent; transition: all 0.15s;
+      text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .sidebar-tab.active { color: var(--accent2); border-bottom-color: var(--accent2); }
+
+    .sidebar-content { flex: 1; overflow-y: auto; padding: 12px; }
+    .sidebar-panel { display: none; }
+    .sidebar-panel.active { display: block; }
+
+    /* Schema tree */
+    .schema-table { margin-bottom: 16px; }
+    .schema-table-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 10px; border-radius: 6px;
+      cursor: pointer; background: var(--surface2);
+      font-size: 13px; font-weight: 600;
+      border: 1px solid var(--border);
+    }
+    .schema-table-header .table-icon { color: var(--accent); font-size: 14px; }
+    .schema-table-header .row-count { margin-left: auto; font-size: 10px; color: var(--muted); font-weight: 400; }
+    .schema-columns { padding: 4px 0 0 12px; display: none; }
+    .schema-columns.open { display: block; }
+    .schema-col {
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 8px; font-size: 12px; color: var(--muted);
+      border-radius: 4px; cursor: pointer; transition: background 0.1s;
+    }
+    .schema-col:hover { background: var(--surface2); color: var(--text); }
+    .col-type { margin-left: auto; font-size: 10px; color: var(--border); font-family: monospace; }
+    .col-pk { color: var(--warning); font-size: 10px; }
+    .col-fk { color: var(--accent); font-size: 10px; }
+
+    /* Exercises */
+    .exercise-item {
+      padding: 10px 12px; border-radius: 8px; margin-bottom: 8px;
+      background: var(--surface2); border: 1px solid var(--border);
+      cursor: pointer; transition: all 0.15s;
+    }
+    .exercise-item:hover { border-color: var(--accent); }
+    .exercise-item.active { border-color: var(--accent2); background: rgba(78, 204, 163, 0.08); }
+    .exercise-item.solved { border-color: var(--success); }
+    .exercise-difficulty {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.5px; margin-bottom: 4px;
+    }
+    .diff-easy { color: var(--success); }
+    .diff-medium { color: var(--warning); }
+    .diff-hard { color: var(--error); }
+    .exercise-title { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+    .exercise-desc { font-size: 11px; color: var(--muted); line-height: 1.4; }
+    .exercise-solved-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 10px; color: var(--success); margin-top: 4px;
+    }
+
+    /* Center: editor + results */
+    .center { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* Exercise prompt */
+    .exercise-prompt {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 16px; flex-shrink: 0;
+      display: none;
+    }
+    .exercise-prompt.visible { display: block; }
+    .exercise-prompt-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+    .exercise-prompt-title { font-size: 14px; font-weight: 700; }
+    .exercise-prompt-close {
+      font-size: 18px; color: var(--muted); cursor: pointer; line-height: 1;
+      background: none; border: none; color: var(--muted);
+    }
+    .exercise-prompt-close:hover { color: var(--text); }
+    .exercise-prompt-body { font-size: 13px; color: var(--muted); line-height: 1.6; }
+    .exercise-hint {
+      margin-top: 8px; padding: 8px 12px; background: rgba(108,99,255,0.1);
+      border-left: 3px solid var(--accent); border-radius: 4px;
+      font-size: 12px; color: var(--text); display: none;
+    }
+    .exercise-hint.visible { display: block; }
+    .hint-btn {
+      margin-top: 8px; font-size: 12px; background: none; border: none;
+      color: var(--accent); cursor: pointer; padding: 0; text-decoration: underline;
+    }
+
+    /* Editor area */
+    .editor-area {
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      border-bottom: 1px solid var(--border);
+    }
+    .editor-toolbar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 12px; background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    .run-btn {
+      display: flex; align-items: center; gap: 6px;
+      padding: 7px 16px; border-radius: 6px; font-size: 13px;
+      font-weight: 600; cursor: pointer; border: none;
+      background: var(--accent); color: white; transition: all 0.15s;
+    }
+    .run-btn:hover { background: #5a52e8; transform: translateY(-1px); }
+    .run-btn:active { transform: none; }
+    .run-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .toolbar-sep { width: 1px; height: 20px; background: var(--border); }
+    .toolbar-btn {
+      padding: 6px 12px; border-radius: 6px; font-size: 12px;
+      cursor: pointer; border: 1px solid var(--border);
+      background: var(--surface2); color: var(--muted); transition: all 0.15s;
+    }
+    .toolbar-btn:hover { color: var(--text); border-color: var(--accent); }
+    .kbd { font-size: 11px; color: var(--muted); margin-left: auto; }
+
+    .editor-wrapper {
+      position: relative;
+      background: var(--bg);
+    }
+    .line-numbers {
+      position: absolute; left: 0; top: 0; bottom: 0;
+      width: 40px; padding: 14px 0 14px 0;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; align-items: flex-end;
+      padding-right: 8px; pointer-events: none;
+      font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px;
+      color: var(--border); line-height: 1.6;
+      overflow: hidden;
+    }
+    #sql-editor {
+      width: 100%; min-height: 140px; max-height: 220px;
+      padding: 14px 14px 14px 52px;
+      background: var(--bg); color: var(--text);
+      border: none; outline: none; resize: vertical;
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 13px; line-height: 1.6;
+      tab-size: 2;
+    }
+    #sql-editor::placeholder { color: var(--border); }
+    #sql-editor::selection { background: rgba(108,99,255,0.35); }
+
+    /* Results */
+    .results-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .results-header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 16px; background: var(--surface);
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .results-label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+    .results-meta { font-size: 12px; color: var(--muted); margin-left: auto; }
+    .results-scroll { flex: 1; overflow: auto; }
+
+    .results-table {
+      width: 100%; border-collapse: collapse; font-size: 13px;
+    }
+    .results-table th {
+      position: sticky; top: 0; z-index: 1;
+      background: var(--surface2); color: var(--accent2);
+      padding: 8px 16px; text-align: left; font-size: 11px;
+      font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--border); white-space: nowrap;
+    }
+    .results-table td {
+      padding: 7px 16px; border-bottom: 1px solid rgba(46,50,72,0.5);
+      color: var(--text); white-space: nowrap; max-width: 240px;
+      overflow: hidden; text-overflow: ellipsis;
+    }
+    .results-table tr:hover td { background: rgba(108,99,255,0.06); }
+    .results-table td.num { color: var(--accent2); font-family: monospace; }
+    .results-table td.null { color: var(--border); font-style: italic; font-size: 11px; }
+
+    .empty-state {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      flex: 1; gap: 12px; color: var(--muted); padding: 40px;
+    }
+    .empty-icon { font-size: 48px; opacity: 0.3; }
+    .empty-text { font-size: 14px; }
+    .empty-sub { font-size: 12px; opacity: 0.7; }
+
+    .error-box {
+      margin: 16px; padding: 14px 16px; border-radius: 8px;
+      background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.3);
+      color: var(--error); font-size: 13px; font-family: monospace;
+    }
+
+    .success-banner {
+      display: none; align-items: center; gap: 10px;
+      padding: 10px 16px; background: rgba(74,222,128,0.1);
+      border-bottom: 1px solid rgba(74,222,128,0.3);
+      font-size: 13px; color: var(--success);
+    }
+    .success-banner.visible { display: flex; }
+
+    /* Scroll styling */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+    /* Syntax highlight classes */
+    .kw { color: #c792ea; }
+    .fn { color: #82aaff; }
+    .str { color: #c3e88d; }
+    .num-lit { color: #f78c6c; }
+    .cmt { color: #546e7a; font-style: italic; }
+
+    /* Loading overlay */
+    #loading {
+      position: fixed; inset: 0; background: var(--bg);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 16px; z-index: 100;
+    }
+    .loader {
+      width: 40px; height: 40px; border: 3px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading p { color: var(--muted); font-size: 14px; }
+  </style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="loader"></div>
+  <p>Loading SQL engine...</p>
+</div>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">🗄️</div>
+    <h1>SQL <span>Playground</span></h1>
+  </div>
+  <div class="header-badges">
+    <div class="badge active" id="badge-db">📦 E-Commerce DB</div>
+    <div class="badge" id="badge-cheatsheet" onclick="toggleCheatsheet()">📋 Cheatsheet</div>
+  </div>
+</header>
+
+<div class="main">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-tabs">
+      <div class="sidebar-tab active" onclick="showSidebarTab('schema', this)">Schema</div>
+      <div class="sidebar-tab" onclick="showSidebarTab('exercises', this)">Exercises</div>
+    </div>
+    <div class="sidebar-content">
+      <div class="sidebar-panel active" id="panel-schema">
+        <!-- generated by JS -->
+      </div>
+      <div class="sidebar-panel" id="panel-exercises">
+        <!-- generated by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Center -->
+  <div class="center">
+    <!-- Exercise prompt -->
+    <div class="exercise-prompt" id="exercise-prompt">
+      <div class="exercise-prompt-header">
+        <div>
+          <span class="exercise-difficulty" id="ep-diff"></span>
+          <div class="exercise-prompt-title" id="ep-title"></div>
+        </div>
+        <button class="exercise-prompt-close" onclick="clearExercise()">✕</button>
+      </div>
+      <div class="exercise-prompt-body" id="ep-body"></div>
+      <button class="hint-btn" id="ep-hint-btn" onclick="showHint()">💡 Show hint</button>
+      <div class="exercise-hint" id="ep-hint"></div>
+    </div>
+
+    <!-- Success banner -->
+    <div class="success-banner" id="success-banner">
+      <span>✅</span>
+      <span>Correct! Great work. Try the next exercise or explore freely.</span>
+    </div>
+
+    <!-- Editor -->
+    <div class="editor-area">
+      <div class="editor-toolbar">
+        <button class="run-btn" id="run-btn" onclick="runQuery()">
+          ▶ Run Query
+        </button>
+        <div class="toolbar-sep"></div>
+        <button class="toolbar-btn" onclick="formatQuery()">Format</button>
+        <button class="toolbar-btn" onclick="clearEditor()">Clear</button>
+        <span class="kbd">Ctrl+Enter to run</span>
+      </div>
+      <div class="editor-wrapper">
+        <div class="line-numbers" id="line-numbers"></div>
+        <textarea
+          id="sql-editor"
+          spellcheck="false"
+          placeholder="-- Write your SQL here&#10;-- Example: SELECT * FROM customers LIMIT 5;"
+        ></textarea>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div class="results-area">
+      <div class="results-header">
+        <span class="results-label">Results</span>
+        <span class="results-meta" id="results-meta"></span>
+      </div>
+      <div class="results-scroll" id="results-scroll">
+        <div class="empty-state" id="empty-state">
+          <div class="empty-icon">🔍</div>
+          <div class="empty-text">Run a query to see results</div>
+          <div class="empty-sub">Try: SELECT * FROM customers LIMIT 10</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Cheatsheet modal -->
+<div id="cheatsheet-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:50; overflow-y:auto;" onclick="if(event.target===this) toggleCheatsheet()">
+  <div style="max-width:680px; margin:40px auto; background:var(--surface); border-radius:12px; border:1px solid var(--border); padding:28px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+      <h2 style="font-size:18px;">SQL Cheatsheet</h2>
+      <button onclick="toggleCheatsheet()" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;">✕</button>
+    </div>
+    <div id="cheatsheet-content"></div>
+  </div>
+</div>
+
+<script>
+// ─── State ───────────────────────────────────────────────────────────────────
+let db = null;
+let currentExercise = null;
+let solvedExercises = new Set(JSON.parse(localStorage.getItem('sql_solved') || '[]'));
+
+// ─── Schema definition ────────────────────────────────────────────────────────
+const schema = {
+  customers: {
+    icon: '👤',
+    cols: [
+      { name: 'customer_id', type: 'INT', pk: true },
+      { name: 'name',        type: 'TEXT' },
+      { name: 'email',       type: 'TEXT' },
+      { name: 'city',        type: 'TEXT' },
+      { name: 'country',     type: 'TEXT' },
+      { name: 'joined_at',   type: 'DATE' },
+    ]
+  },
+  products: {
+    icon: '📦',
+    cols: [
+      { name: 'product_id',  type: 'INT',  pk: true },
+      { name: 'name',        type: 'TEXT' },
+      { name: 'category',    type: 'TEXT' },
+      { name: 'price',       type: 'REAL' },
+      { name: 'stock',       type: 'INT' },
+    ]
+  },
+  orders: {
+    icon: '🛒',
+    cols: [
+      { name: 'order_id',    type: 'INT',  pk: true },
+      { name: 'customer_id', type: 'INT',  fk: 'customers' },
+      { name: 'order_date',  type: 'DATE' },
+      { name: 'status',      type: 'TEXT' },
+      { name: 'total',       type: 'REAL' },
+    ]
+  },
+  order_items: {
+    icon: '📋',
+    cols: [
+      { name: 'item_id',     type: 'INT',  pk: true },
+      { name: 'order_id',    type: 'INT',  fk: 'orders' },
+      { name: 'product_id',  type: 'INT',  fk: 'products' },
+      { name: 'quantity',    type: 'INT' },
+      { name: 'unit_price',  type: 'REAL' },
+    ]
+  },
+  reviews: {
+    icon: '⭐',
+    cols: [
+      { name: 'review_id',   type: 'INT',  pk: true },
+      { name: 'product_id',  type: 'INT',  fk: 'products' },
+      { name: 'customer_id', type: 'INT',  fk: 'customers' },
+      { name: 'rating',      type: 'INT' },
+      { name: 'comment',     type: 'TEXT' },
+      { name: 'review_date', type: 'DATE' },
+    ]
+  }
+};
+
+// ─── Exercises ────────────────────────────────────────────────────────────────
+const exercises = [
+  {
+    id: 'ex1', diff: 'easy', title: 'View all customers',
+    desc: 'Retrieve every row from the <code>customers</code> table.',
+    hint: 'Use SELECT * FROM table_name;',
+    check: (rows, cols) => cols.length === 6 && rows.length === 20,
+  },
+  {
+    id: 'ex2', diff: 'easy', title: 'Filter by country',
+    desc: 'Find all customers who live in <strong>USA</strong>.',
+    hint: "Add a WHERE clause: WHERE country = 'USA'",
+    check: (rows, cols) => rows.every(r => {
+      const ci = cols.indexOf('country');
+      return r[ci] === 'USA';
+    }) && rows.length > 0,
+  },
+  {
+    id: 'ex3', diff: 'easy', title: 'Sort products by price',
+    desc: 'List all products ordered from most expensive to cheapest. Show only <code>name</code> and <code>price</code>.',
+    hint: 'Use ORDER BY price DESC',
+    check: (rows, cols) => {
+      if (!cols.includes('price') || !cols.includes('name')) return false;
+      const pi = cols.indexOf('price');
+      for (let i = 1; i < rows.length; i++) {
+        if (Number(rows[i][pi]) > Number(rows[i-1][pi])) return false;
+      }
+      return rows.length > 0;
+    },
+  },
+  {
+    id: 'ex4', diff: 'easy', title: 'Count total orders',
+    desc: 'Write a query that returns the total number of orders in the <code>orders</code> table as a column named <code>total_orders</code>.',
+    hint: 'Use COUNT(*) AS total_orders',
+    check: (rows, cols) => cols.includes('total_orders') && rows.length === 1,
+  },
+  {
+    id: 'ex5', diff: 'medium', title: 'Orders per customer',
+    desc: 'Show how many orders each customer has placed. Return <code>customer_id</code> and <code>order_count</code>, ordered by <code>order_count</code> descending.',
+    hint: 'GROUP BY customer_id, then COUNT(*) AS order_count',
+    check: (rows, cols) => {
+      if (!cols.includes('customer_id') || !cols.includes('order_count')) return false;
+      const oi = cols.indexOf('order_count');
+      for (let i = 1; i < rows.length; i++) {
+        if (Number(rows[i][oi]) > Number(rows[i-1][oi])) return false;
+      }
+      return rows.length > 0;
+    },
+  },
+  {
+    id: 'ex6', diff: 'medium', title: 'Average product rating',
+    desc: 'Calculate the average rating for each product. Return <code>product_id</code> and <code>avg_rating</code>, only for products with at least 2 reviews.',
+    hint: 'GROUP BY product_id, then HAVING COUNT(*) >= 2',
+    check: (rows, cols) => cols.includes('product_id') && cols.includes('avg_rating') && rows.length > 0,
+  },
+  {
+    id: 'ex7', diff: 'medium', title: 'JOIN customers & orders',
+    desc: "List each customer's name alongside their order totals. Return <code>name</code> and <code>total</code>.",
+    hint: 'JOIN orders ON customers.customer_id = orders.customer_id',
+    check: (rows, cols) => cols.includes('name') && cols.includes('total') && rows.length > 0,
+  },
+  {
+    id: 'ex8', diff: 'medium', title: 'Revenue by category',
+    desc: 'Calculate total revenue (quantity × unit_price) per product category. Return <code>category</code> and <code>revenue</code>, sorted by revenue descending.',
+    hint: 'JOIN order_items → products, GROUP BY category',
+    check: (rows, cols) => {
+      if (!cols.includes('category') || !cols.includes('revenue')) return false;
+      const ri = cols.indexOf('revenue');
+      for (let i = 1; i < rows.length; i++) {
+        if (Number(rows[i][ri]) > Number(rows[i-1][ri])) return false;
+      }
+      return rows.length > 0;
+    },
+  },
+  {
+    id: 'ex9', diff: 'hard', title: 'Top customer by spend',
+    desc: "Find the customer who has spent the most in total across all orders. Return their <code>name</code> and <code>total_spent</code>.",
+    hint: 'SUM(total) GROUP BY customer_id, JOIN customers, ORDER BY ... LIMIT 1',
+    check: (rows, cols) => cols.includes('name') && cols.includes('total_spent') && rows.length === 1,
+  },
+  {
+    id: 'ex10', diff: 'hard', title: 'Products never ordered',
+    desc: 'Find all products that have never appeared in any order. Return their <code>name</code>.',
+    hint: 'LEFT JOIN order_items, then WHERE item_id IS NULL  — or use NOT IN / NOT EXISTS',
+    check: (rows, cols) => cols.includes('name'),
+  },
+];
+
+// ─── DB seed ──────────────────────────────────────────────────────────────────
+const seedSQL = `
+CREATE TABLE customers (
+  customer_id INTEGER PRIMARY KEY,
+  name TEXT, email TEXT, city TEXT, country TEXT, joined_at TEXT
+);
+CREATE TABLE products (
+  product_id INTEGER PRIMARY KEY,
+  name TEXT, category TEXT, price REAL, stock INTEGER
+);
+CREATE TABLE orders (
+  order_id INTEGER PRIMARY KEY,
+  customer_id INTEGER, order_date TEXT, status TEXT, total REAL,
+  FOREIGN KEY(customer_id) REFERENCES customers(customer_id)
+);
+CREATE TABLE order_items (
+  item_id INTEGER PRIMARY KEY,
+  order_id INTEGER, product_id INTEGER, quantity INTEGER, unit_price REAL,
+  FOREIGN KEY(order_id) REFERENCES orders(order_id),
+  FOREIGN KEY(product_id) REFERENCES products(product_id)
+);
+CREATE TABLE reviews (
+  review_id INTEGER PRIMARY KEY,
+  product_id INTEGER, customer_id INTEGER, rating INTEGER, comment TEXT, review_date TEXT,
+  FOREIGN KEY(product_id) REFERENCES products(product_id),
+  FOREIGN KEY(customer_id) REFERENCES customers(customer_id)
+);
+
+INSERT INTO customers VALUES
+(1,'Alice Johnson','alice@example.com','New York','USA','2022-03-15'),
+(2,'Bob Martinez','bob@example.com','Los Angeles','USA','2022-05-20'),
+(3,'Clara Schmidt','clara@example.com','Berlin','Germany','2021-11-08'),
+(4,'David Lee','david@example.com','Toronto','Canada','2023-01-12'),
+(5,'Emma Wilson','emma@example.com','London','UK','2022-08-30'),
+(6,'Fiona Chen','fiona@example.com','Shanghai','China','2023-03-05'),
+(7,'George Brown','george@example.com','Sydney','Australia','2021-07-22'),
+(8,'Hannah White','hannah@example.com','Paris','France','2022-12-01'),
+(9,'Ivan Petrov','ivan@example.com','Moscow','Russia','2023-06-14'),
+(10,'Julia Adams','julia@example.com','Chicago','USA','2022-02-18'),
+(11,'Kevin Nguyen','kevin@example.com','Houston','USA','2023-09-01'),
+(12,'Laura Kim','laura@example.com','Seoul','South Korea','2022-07-11'),
+(13,'Mike Davis','mike@example.com','Miami','USA','2021-04-25'),
+(14,'Nina Rossi','nina@example.com','Rome','Italy','2023-02-28'),
+(15,'Omar Hassan','omar@example.com','Cairo','Egypt','2022-10-09'),
+(16,'Priya Patel','priya@example.com','Mumbai','India','2023-04-17'),
+(17,'Quinn Murphy','quinn@example.com','Dublin','Ireland','2022-06-03'),
+(18,'Rachel Green','rachel@example.com','Boston','USA','2021-12-31'),
+(19,'Sam Torres','sam@example.com','Mexico City','Mexico','2023-07-22'),
+(20,'Tina Fox','tina@example.com','Austin','USA','2022-09-14');
+
+INSERT INTO products VALUES
+(1,'Laptop Pro 15','Electronics',1299.99,45),
+(2,'Wireless Headphones','Electronics',89.99,120),
+(3,'Coffee Maker Deluxe','Kitchen',79.95,60),
+(4,'Running Shoes X1','Sports',129.00,200),
+(5,'The SQL Handbook','Books',34.99,300),
+(6,'Smart Watch S3','Electronics',249.00,80),
+(7,'Yoga Mat Premium','Sports',45.50,150),
+(8,'Blender Pro','Kitchen',59.99,75),
+(9,'Python Deep Dive','Books',42.00,250),
+(10,'Desk Lamp LED','Home',29.99,100),
+(11,'Mechanical Keyboard','Electronics',149.99,55),
+(12,'Water Bottle Steel','Sports',24.95,400),
+(13,'Air Fryer 5L','Kitchen',99.00,40),
+(14,'Novel: The Journey','Books',18.99,500),
+(15,'Standing Desk Mat','Home',55.00,0);
+
+INSERT INTO orders VALUES
+(1,1,'2024-01-05','delivered',1389.98),
+(2,2,'2024-01-12','delivered',219.98),
+(3,3,'2024-01-18','delivered',79.95),
+(4,4,'2024-02-02','delivered',163.99),
+(5,5,'2024-02-14','delivered',89.99),
+(6,1,'2024-02-20','delivered',249.00),
+(7,6,'2024-03-01','delivered',347.99),
+(8,7,'2024-03-08','shipped',129.00),
+(9,8,'2024-03-15','delivered',124.49),
+(10,10,'2024-03-22','delivered',42.00),
+(11,11,'2024-04-01','delivered',279.98),
+(12,2,'2024-04-05','cancelled',34.99),
+(13,12,'2024-04-10','delivered',74.50),
+(14,13,'2024-04-18','delivered',149.99),
+(15,14,'2024-04-25','shipped',199.00),
+(16,1,'2024-05-03','delivered',189.99),
+(17,15,'2024-05-10','delivered',59.99),
+(18,16,'2024-05-17','delivered',42.00),
+(19,3,'2024-05-24','delivered',89.99),
+(20,18,'2024-05-31','delivered',1299.99),
+(21,19,'2024-06-07','delivered',34.99),
+(22,20,'2024-06-14','delivered',99.00),
+(23,9,'2024-06-21','pending',45.50),
+(24,17,'2024-06-28','delivered',149.99),
+(25,4,'2024-07-05','delivered',129.00);
+
+INSERT INTO order_items VALUES
+(1,1,1,1,1299.99),(2,1,2,1,89.99),
+(3,2,4,1,129.00),(4,2,2,1,89.99),
+(5,3,3,1,79.95),
+(6,4,4,1,129.00),(7,4,7,1,34.99),
+(8,5,2,1,89.99),
+(9,6,6,1,249.00),
+(10,7,1,1,1299.99),(11,7,12,2,24.00),
+(12,8,4,1,129.00),
+(13,9,3,1,79.95),(14,9,12,1,24.95),(15,9,10,1,29.99),
+(16,10,9,1,42.00),
+(17,11,2,1,89.99),(18,11,11,1,149.99),(19,11,5,1,34.99),
+(20,12,5,1,34.99),
+(21,13,7,1,45.50),(22,13,12,1,24.95),
+(23,14,11,1,149.99),
+(24,15,6,1,249.00),
+(25,16,1,1,1299.99),(26,16,7,1,45.50),(27,16,10,2,29.99),
+(28,17,8,1,59.99),
+(29,18,9,1,42.00),
+(30,19,2,1,89.99),
+(31,20,1,1,1299.99),
+(32,21,5,1,34.99),
+(33,22,13,1,99.00),
+(34,23,7,1,45.50),
+(35,24,11,1,149.99),
+(36,25,4,1,129.00);
+
+INSERT INTO reviews VALUES
+(1,1,3,5,'Amazing laptop, super fast!','2024-02-01'),
+(2,1,18,4,'Great but a bit heavy.','2024-06-10'),
+(3,2,5,5,'Best headphones I ever had!','2024-03-01'),
+(4,2,11,4,'Good sound, comfortable.','2024-04-20'),
+(5,2,19,3,'Decent but cable broke.','2024-06-12'),
+(6,3,3,5,'Makes perfect coffee every time.','2024-02-15'),
+(7,4,2,4,'Very comfortable for long runs.','2024-02-01'),
+(8,4,4,5,'Perfect fit, great grip.','2024-07-10'),
+(9,5,10,5,'Best SQL book for beginners!','2024-04-01'),
+(10,5,18,4,'Clear explanations, great examples.','2024-06-20'),
+(11,6,8,4,'Sleek design, accurate sensors.','2024-04-05'),
+(12,7,12,5,'Thick and non-slip, love it.','2024-04-25'),
+(13,9,16,5,'In-depth and very practical.','2024-06-01'),
+(14,11,13,5,'Super tactile and satisfying.','2024-05-10'),
+(15,11,24,4,'Loud but I like it.','2024-07-05');
+`;
+
+// ─── Cheatsheet data ──────────────────────────────────────────────────────────
+const cheatsheet = [
+  {
+    title: 'SELECT & Basics', items: [
+      ['SELECT * FROM table', 'Select all columns'],
+      ['SELECT col1, col2 FROM table', 'Select specific columns'],
+      ['SELECT DISTINCT col FROM table', 'Remove duplicates'],
+      ['SELECT col AS alias FROM table', 'Rename column in output'],
+      ['LIMIT n', 'Return only first n rows'],
+      ['OFFSET n', 'Skip first n rows'],
+    ]
+  },
+  {
+    title: 'Filtering', items: [
+      ["WHERE col = 'value'", 'Exact match'],
+      ['WHERE col > 100', 'Comparison operators: >, <, >=, <=, !='],
+      ["WHERE col LIKE '%pattern%'", 'Pattern match (% = wildcard)'],
+      ['WHERE col IN (1, 2, 3)', 'Match any value in list'],
+      ['WHERE col BETWEEN 10 AND 50', 'Range filter (inclusive)'],
+      ['WHERE col IS NULL', 'Check for missing values'],
+      ['WHERE a AND b', 'Both conditions must be true'],
+      ['WHERE a OR b', 'Either condition true'],
+    ]
+  },
+  {
+    title: 'Sorting & Grouping', items: [
+      ['ORDER BY col ASC', 'Sort ascending (default)'],
+      ['ORDER BY col DESC', 'Sort descending'],
+      ['GROUP BY col', 'Aggregate rows by column value'],
+      ['HAVING condition', 'Filter after GROUP BY (like WHERE for groups)'],
+    ]
+  },
+  {
+    title: 'Aggregate Functions', items: [
+      ['COUNT(*)', 'Count rows'],
+      ['COUNT(DISTINCT col)', 'Count unique values'],
+      ['SUM(col)', 'Sum of values'],
+      ['AVG(col)', 'Average value'],
+      ['MIN(col) / MAX(col)', 'Smallest / largest value'],
+      ['ROUND(value, 2)', 'Round to decimal places'],
+    ]
+  },
+  {
+    title: 'JOINs', items: [
+      ['INNER JOIN b ON a.id = b.id', 'Rows matching in BOTH tables'],
+      ['LEFT JOIN b ON a.id = b.id', 'All rows from left + matches from right'],
+      ['RIGHT JOIN b ON a.id = b.id', 'All rows from right + matches from left'],
+    ]
+  },
+  {
+    title: 'Subqueries & CTEs', items: [
+      ['SELECT * FROM (SELECT ...) AS sub', 'Inline subquery'],
+      ['WHERE col IN (SELECT col FROM ...)', 'Filter using subquery'],
+      ['WITH cte AS (SELECT ...) SELECT * FROM cte', 'Common Table Expression (CTE)'],
+    ]
+  },
+];
+
+// ─── Init SQL.js ──────────────────────────────────────────────────────────────
+initSqlJs({ locateFile: f => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/${f}` })
+  .then(SQL => {
+    db = new SQL.Database();
+    db.run(seedSQL);
+    document.getElementById('loading').style.display = 'none';
+    buildSchema();
+    buildExercises();
+    buildCheatsheet();
+    updateLineNumbers();
+  })
+  .catch(err => {
+    document.getElementById('loading').innerHTML = `<p style="color:var(--error)">Failed to load SQL engine: ${err.message}</p>`;
+  });
+
+// ─── Run query ────────────────────────────────────────────────────────────────
+function runQuery() {
+  const sql = document.getElementById('sql-editor').value.trim();
+  if (!sql || !db) return;
+
+  const scroll = document.getElementById('results-scroll');
+  const meta = document.getElementById('results-meta');
+  const successBanner = document.getElementById('success-banner');
+  successBanner.classList.remove('visible');
+
+  const t0 = performance.now();
+  try {
+    const results = db.exec(sql);
+    const elapsed = (performance.now() - t0).toFixed(1);
+
+    if (!results.length) {
+      scroll.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-text">Query executed successfully</div><div class="empty-sub">No rows returned</div></div>';
+      meta.textContent = `0 rows · ${elapsed}ms`;
+      return;
+    }
+
+    const { columns, values } = results[0];
+    meta.textContent = `${values.length} row${values.length !== 1 ? 's' : ''} · ${elapsed}ms`;
+
+    let html = '<table class="results-table"><thead><tr>';
+    columns.forEach(c => { html += `<th>${escHtml(c)}</th>`; });
+    html += '</tr></thead><tbody>';
+    values.forEach(row => {
+      html += '<tr>';
+      row.forEach(val => {
+        if (val === null) html += '<td class="null">NULL</td>';
+        else if (typeof val === 'number') html += `<td class="num">${val}</td>`;
+        else html += `<td>${escHtml(String(val))}</td>`;
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    scroll.innerHTML = html;
+
+    // Check exercise
+    if (currentExercise) {
+      const ex = exercises.find(e => e.id === currentExercise);
+      if (ex && ex.check(values, columns)) {
+        successBanner.classList.add('visible');
+        solvedExercises.add(currentExercise);
+        localStorage.setItem('sql_solved', JSON.stringify([...solvedExercises]));
+        buildExercises();
+      }
+    }
+  } catch (err) {
+    scroll.innerHTML = `<div class="error-box">⚠ ${escHtml(err.message)}</div>`;
+    meta.textContent = '';
+  }
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ─── Schema panel ─────────────────────────────────────────────────────────────
+const rowCounts = { customers:20, products:15, orders:25, order_items:36, reviews:15 };
+
+function buildSchema() {
+  const panel = document.getElementById('panel-schema');
+  let html = '';
+  for (const [tbl, def] of Object.entries(schema)) {
+    html += `<div class="schema-table">
+      <div class="schema-table-header" onclick="toggleSchema('${tbl}')">
+        <span class="table-icon">${def.icon}</span>
+        <span>${tbl}</span>
+        <span class="row-count">${rowCounts[tbl]} rows</span>
+      </div>
+      <div class="schema-columns" id="sc-${tbl}">`;
+    def.cols.forEach(col => {
+      const badges = [
+        col.pk ? '<span class="col-pk" title="Primary Key">🔑</span>' : '',
+        col.fk ? `<span class="col-fk" title="Foreign Key → ${col.fk}">🔗</span>` : '',
+      ].join('');
+      html += `<div class="schema-col" onclick="insertCol('${tbl}', '${col.name}')" title="Click to insert">
+        ${badges} ${escHtml(col.name)}
+        <span class="col-type">${col.type}</span>
+      </div>`;
+    });
+    html += `</div></div>`;
+  }
+  panel.innerHTML = html;
+}
+
+function toggleSchema(tbl) {
+  const el = document.getElementById(`sc-${tbl}`);
+  el.classList.toggle('open');
+}
+
+function insertCol(tbl, col) {
+  const ed = document.getElementById('sql-editor');
+  const ins = `${tbl}.${col}`;
+  const s = ed.selectionStart, e = ed.selectionEnd;
+  ed.value = ed.value.slice(0, s) + ins + ed.value.slice(e);
+  ed.focus();
+  ed.setSelectionRange(s + ins.length, s + ins.length);
+  updateLineNumbers();
+}
+
+// ─── Exercises panel ──────────────────────────────────────────────────────────
+function buildExercises() {
+  const panel = document.getElementById('panel-exercises');
+  const diffClass = { easy: 'diff-easy', medium: 'diff-medium', hard: 'diff-hard' };
+  let html = '';
+  exercises.forEach(ex => {
+    const solved = solvedExercises.has(ex.id);
+    const active = currentExercise === ex.id;
+    html += `<div class="exercise-item ${active ? 'active' : ''} ${solved ? 'solved' : ''}" onclick="loadExercise('${ex.id}')">
+      <div class="exercise-difficulty ${diffClass[ex.diff]}">${ex.diff}</div>
+      <div class="exercise-title">${ex.title}</div>
+      <div class="exercise-desc">${ex.desc}</div>
+      ${solved ? '<div class="exercise-solved-badge">✅ Solved</div>' : ''}
+    </div>`;
+  });
+  panel.innerHTML = html;
+}
+
+function loadExercise(id) {
+  currentExercise = id;
+  const ex = exercises.find(e => e.id === id);
+  document.getElementById('ep-diff').textContent = ex.diff.toUpperCase();
+  document.getElementById('ep-diff').className = 'exercise-difficulty diff-' + ex.diff;
+  document.getElementById('ep-title').textContent = ex.title;
+  document.getElementById('ep-body').innerHTML = ex.desc;
+  document.getElementById('ep-hint').textContent = ex.hint;
+  document.getElementById('ep-hint').classList.remove('visible');
+  document.getElementById('exercise-prompt').classList.add('visible');
+  document.getElementById('success-banner').classList.remove('visible');
+  buildExercises();
+  showSidebarTab('exercises', document.querySelectorAll('.sidebar-tab')[1]);
+}
+
+function clearExercise() {
+  currentExercise = null;
+  document.getElementById('exercise-prompt').classList.remove('visible');
+  document.getElementById('success-banner').classList.remove('visible');
+  buildExercises();
+}
+
+function showHint() {
+  document.getElementById('ep-hint').classList.add('visible');
+}
+
+// ─── Cheatsheet ───────────────────────────────────────────────────────────────
+function buildCheatsheet() {
+  const el = document.getElementById('cheatsheet-content');
+  let html = '';
+  cheatsheet.forEach(section => {
+    html += `<div style="margin-bottom:20px;">
+      <h3 style="font-size:13px; text-transform:uppercase; letter-spacing:0.5px; color:var(--accent2); margin-bottom:10px;">${section.title}</h3>
+      <table style="width:100%; border-collapse:collapse;">`;
+    section.items.forEach(([code, desc]) => {
+      html += `<tr>
+        <td style="padding:5px 12px 5px 0; font-family:monospace; font-size:12px; color:var(--accent); white-space:nowrap;">${escHtml(code)}</td>
+        <td style="padding:5px 0; font-size:12px; color:var(--muted);">${escHtml(desc)}</td>
+      </tr>`;
+    });
+    html += '</table></div>';
+  });
+  el.innerHTML = html;
+}
+
+function toggleCheatsheet() {
+  const ov = document.getElementById('cheatsheet-overlay');
+  const badge = document.getElementById('badge-cheatsheet');
+  const vis = ov.style.display === 'none';
+  ov.style.display = vis ? 'block' : 'none';
+  badge.classList.toggle('active', vis);
+}
+
+// ─── Sidebar tabs ─────────────────────────────────────────────────────────────
+function showSidebarTab(name, el) {
+  document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.sidebar-panel').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('panel-' + name).classList.add('active');
+}
+
+// ─── Editor helpers ───────────────────────────────────────────────────────────
+const editor = document.getElementById('sql-editor');
+
+editor.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault();
+    runQuery();
+  }
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const s = editor.selectionStart, end = editor.selectionEnd;
+    editor.value = editor.value.slice(0, s) + '  ' + editor.value.slice(end);
+    editor.setSelectionRange(s + 2, s + 2);
+  }
+});
+
+editor.addEventListener('input', updateLineNumbers);
+editor.addEventListener('scroll', syncScroll);
+
+function updateLineNumbers() {
+  const lines = editor.value.split('\n');
+  const ln = document.getElementById('line-numbers');
+  ln.innerHTML = lines.map((_, i) => `<span>${i + 1}</span>`).join('');
+}
+
+function syncScroll() {
+  document.getElementById('line-numbers').scrollTop = editor.scrollTop;
+}
+
+function formatQuery() {
+  const sql = editor.value;
+  const keywords = ['SELECT','FROM','WHERE','JOIN','LEFT JOIN','RIGHT JOIN','INNER JOIN','ON','GROUP BY','ORDER BY','HAVING','LIMIT','OFFSET','AND','OR','NOT','IN','AS','DISTINCT','COUNT','SUM','AVG','MIN','MAX','INSERT','UPDATE','DELETE','CREATE','DROP'];
+  let formatted = sql
+    .replace(/\s+/g, ' ')
+    .trim();
+  keywords.forEach(kw => {
+    const re = new RegExp('\\b' + kw + '\\b', 'gi');
+    formatted = formatted.replace(re, '\n' + kw);
+  });
+  editor.value = formatted.trim() + ';';
+  updateLineNumbers();
+}
+
+function clearEditor() {
+  editor.value = '';
+  document.getElementById('results-scroll').innerHTML = '<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-text">Run a query to see results</div><div class="empty-sub">Try: SELECT * FROM customers LIMIT 10</div></div>';
+  document.getElementById('results-meta').textContent = '';
+  updateLineNumbers();
+}
+
+// Initial line numbers
+updateLineNumbers();
+</script>
+</body>
+</html>
