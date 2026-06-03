@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FuelLog — Food Tracker</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f0f0f;
+      color: #f0f0f0;
+      min-height: 100vh;
+      padding: 24px 16px 48px;
+    }
+
+    .container { max-width: 640px; margin: 0 auto; }
+
+    header {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      margin-bottom: 32px;
+    }
+
+    header h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.5px; }
+    header .date { font-size: 0.85rem; color: #888; }
+
+    /* Macro ring summary */
+    .summary {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+
+    .macro-card {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 16px;
+      padding: 18px 20px;
+    }
+
+    .macro-card .label { font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+    .macro-card .value { font-size: 2rem; font-weight: 700; margin: 4px 0 6px; }
+    .macro-card .goal { font-size: 0.8rem; color: #666; }
+
+    .macro-card.calories .value { color: #f97316; }
+    .macro-card.protein .value { color: #22d3ee; }
+
+    .progress-bar {
+      height: 4px;
+      background: #2a2a2a;
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.4s ease;
+    }
+
+    .calories .progress-fill { background: #f97316; }
+    .protein .progress-fill { background: #22d3ee; }
+
+    /* Input area */
+    .input-area {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 24px;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+    }
+
+    textarea {
+      flex: 1;
+      background: #111;
+      border: 1px solid #333;
+      border-radius: 10px;
+      color: #f0f0f0;
+      font-size: 0.95rem;
+      padding: 12px 14px;
+      resize: none;
+      height: 48px;
+      line-height: 1.4;
+      font-family: inherit;
+      transition: border-color 0.2s, height 0.2s;
+      outline: none;
+    }
+
+    textarea:focus { border-color: #555; height: 80px; }
+    textarea::placeholder { color: #555; }
+
+    button.log-btn {
+      background: #f97316;
+      border: none;
+      border-radius: 10px;
+      color: #000;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      padding: 12px 18px;
+      white-space: nowrap;
+      transition: background 0.15s, transform 0.1s;
+      height: 48px;
+    }
+
+    button.log-btn:hover { background: #fb923c; }
+    button.log-btn:active { transform: scale(0.97); }
+    button.log-btn:disabled { background: #444; color: #888; cursor: default; }
+
+    .hint { font-size: 0.78rem; color: #555; margin-top: 10px; }
+    .hint span { color: #777; }
+
+    /* Meal log */
+    .log-header {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #666;
+      margin-bottom: 12px;
+    }
+
+    .meal-list { display: flex; flex-direction: column; gap: 8px; }
+
+    .meal-item {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 12px;
+      padding: 14px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      animation: slideIn 0.25s ease;
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(-8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .meal-item .name { font-size: 0.95rem; }
+    .meal-item .time { font-size: 0.75rem; color: #666; margin-top: 2px; }
+
+    .meal-macros {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .meal-macros .cal { color: #f97316; font-size: 0.9rem; font-weight: 600; }
+    .meal-macros .prot { color: #22d3ee; font-size: 0.9rem; font-weight: 600; }
+
+    .delete-btn {
+      background: none;
+      border: none;
+      color: #444;
+      cursor: pointer;
+      font-size: 1rem;
+      padding: 2px 6px;
+      border-radius: 6px;
+      transition: color 0.15s, background 0.15s;
+      margin-left: 8px;
+    }
+    .delete-btn:hover { color: #ef4444; background: #2a1a1a; }
+
+    .empty-state {
+      text-align: center;
+      color: #555;
+      padding: 32px 0;
+      font-size: 0.9rem;
+    }
+
+    /* Parsing indicator */
+    .parsing {
+      display: none;
+      font-size: 0.8rem;
+      color: #888;
+      margin-top: 8px;
+      align-items: center;
+      gap: 6px;
+    }
+    .parsing.active { display: flex; }
+
+    .dot-pulse span {
+      display: inline-block;
+      width: 4px; height: 4px;
+      background: #888;
+      border-radius: 50%;
+      margin: 0 1px;
+      animation: pulse 1.2s infinite;
+    }
+    .dot-pulse span:nth-child(2) { animation-delay: 0.2s; }
+    .dot-pulse span:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes pulse {
+      0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); }
+      40% { opacity: 1; transform: scale(1); }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>FuelLog</h1>
+    <span class="date" id="today-date"></span>
+  </header>
+
+  <div class="summary">
+    <div class="macro-card calories">
+      <div class="label">Calories</div>
+      <div class="value" id="cal-total">0</div>
+      <div class="goal">of <span id="cal-goal">2000</span> kcal</div>
+      <div class="progress-bar"><div class="progress-fill" id="cal-bar" style="width:0%"></div></div>
+    </div>
+    <div class="macro-card protein">
+      <div class="label">Protein</div>
+      <div class="value" id="prot-total">0<span style="font-size:1rem;font-weight:400">g</span></div>
+      <div class="goal">of <span id="prot-goal">150</span>g target</div>
+      <div class="progress-bar"><div class="progress-fill" id="prot-bar" style="width:0%"></div></div>
+    </div>
+  </div>
+
+  <div class="input-area">
+    <div class="input-row">
+      <textarea id="food-input" placeholder="e.g. &quot;2 eggs and toast&quot;, &quot;large chicken burrito&quot;, &quot;protein shake&quot;…"></textarea>
+      <button class="log-btn" id="log-btn" onclick="logFood()">Log</button>
+    </div>
+    <div class="parsing" id="parsing-indicator">
+      <div class="dot-pulse"><span></span><span></span><span></span></div>
+      Estimating nutrition…
+    </div>
+    <div class="hint">Type what you ate in plain English — <span>Claude will estimate the nutrition</span> (simulated in prototype)</div>
+  </div>
+
+  <div class="log-header">Today's Log</div>
+  <div class="meal-list" id="meal-list">
+    <div class="empty-state" id="empty-state">No meals logged yet. Add something above.</div>
+  </div>
+</div>
+
+<script>
+  // --- State ---
+  const GOALS = { calories: 2000, protein: 150 };
+  let meals = JSON.parse(localStorage.getItem('fuelog-meals') || '[]')
+               .filter(m => m.date === todayKey());
+
+  function todayKey() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  // --- Nutrition estimation (simulated; replace with Claude API call) ---
+  const FOOD_DB = [
+    { keywords: ['egg','eggs'], cal: 70, prot: 6, unit: 'egg' },
+    { keywords: ['toast','bread','slice'], cal: 80, prot: 3, unit: 'slice' },
+    { keywords: ['chicken breast','chicken'], cal: 165, prot: 31, unit: 'serving' },
+    { keywords: ['burrito'], cal: 550, prot: 28, unit: 'burrito' },
+    { keywords: ['protein shake','protein powder','whey'], cal: 130, prot: 25, unit: 'scoop' },
+    { keywords: ['oatmeal','oats'], cal: 150, prot: 5, unit: 'cup' },
+    { keywords: ['banana'], cal: 105, prot: 1, unit: 'banana' },
+    { keywords: ['apple'], cal: 95, prot: 0, unit: 'apple' },
+    { keywords: ['rice','white rice'], cal: 200, prot: 4, unit: 'cup' },
+    { keywords: ['salmon','fish'], cal: 208, prot: 28, unit: 'serving' },
+    { keywords: ['greek yogurt','yogurt'], cal: 100, prot: 17, unit: 'cup' },
+    { keywords: ['almonds','nuts'], cal: 160, prot: 6, unit: 'oz' },
+    { keywords: ['pizza'], cal: 285, prot: 12, unit: 'slice' },
+    { keywords: ['burger','hamburger'], cal: 540, prot: 30, unit: 'burger' },
+    { keywords: ['coffee','latte'], cal: 15, prot: 1, unit: 'cup' },
+    { keywords: ['milk'], cal: 150, prot: 8, unit: 'cup' },
+    { keywords: ['peanut butter'], cal: 190, prot: 8, unit: 'tbsp' },
+    { keywords: ['avocado'], cal: 160, prot: 2, unit: 'avocado' },
+    { keywords: ['salad'], cal: 120, prot: 5, unit: 'bowl' },
+    { keywords: ['steak','beef'], cal: 300, prot: 26, unit: 'serving' },
+    { keywords: ['pasta','spaghetti'], cal: 220, prot: 8, unit: 'cup' },
+    { keywords: ['tuna'], cal: 110, prot: 25, unit: 'can' },
+    { keywords: ['cottage cheese'], cal: 110, prot: 14, unit: 'cup' },
+  ];
+
+  function parseQuantity(text) {
+    const numWords = { one:1,two:2,three:3,four:4,five:5,six:6,half:0.5,a:1,an:1 };
+    const match = text.match(/(\d+(?:\.\d+)?)\s*/);
+    if (match) return parseFloat(match[1]);
+    for (const [word, val] of Object.entries(numWords)) {
+      if (new RegExp(`\\b${word}\\b`, 'i').test(text)) return val;
+    }
+    return 1;
+  }
+
+  function estimateNutrition(input) {
+    const lower = input.toLowerCase();
+    let totalCal = 0, totalProt = 0;
+    const matched = [];
+
+    for (const food of FOOD_DB) {
+      for (const kw of food.keywords) {
+        if (lower.includes(kw)) {
+          const qty = parseQuantity(lower.split(kw)[0].split(/,|and/).pop());
+          totalCal  += food.cal  * qty;
+          totalProt += food.prot * qty;
+          matched.push(`${qty > 1 ? qty + 'x ' : ''}${kw}`);
+          break;
+        }
+      }
+    }
+
+    if (totalCal === 0) {
+      // fallback generic estimate
+      totalCal  = 250;
+      totalProt = 10;
+    }
+
+    return { calories: Math.round(totalCal), protein: Math.round(totalProt) };
+  }
+
+  // --- UI ---
+  function saveMeals() {
+    const all = JSON.parse(localStorage.getItem('fuelog-meals') || '[]')
+                 .filter(m => m.date !== todayKey());
+    localStorage.setItem('fuelog-meals', JSON.stringify([...all, ...meals]));
+  }
+
+  function updateSummary() {
+    const totCal  = meals.reduce((s, m) => s + m.calories, 0);
+    const totProt = meals.reduce((s, m) => s + m.protein, 0);
+
+    document.getElementById('cal-total').textContent  = totCal;
+    document.getElementById('prot-total').innerHTML   = `${totProt}<span style="font-size:1rem;font-weight:400">g</span>`;
+    document.getElementById('cal-bar').style.width    = Math.min(100, (totCal  / GOALS.calories) * 100) + '%';
+    document.getElementById('prot-bar').style.width   = Math.min(100, (totProt / GOALS.protein)  * 100) + '%';
+  }
+
+  function renderMeals() {
+    const list = document.getElementById('meal-list');
+    const empty = document.getElementById('empty-state');
+
+    if (meals.length === 0) {
+      list.innerHTML = '';
+      list.appendChild(empty);
+      return;
+    }
+
+    list.innerHTML = [...meals].reverse().map((m, ri) => {
+      const i = meals.length - 1 - ri;
+      return `
+        <div class="meal-item">
+          <div>
+            <div class="name">${m.name}</div>
+            <div class="time">${m.time}</div>
+          </div>
+          <div class="meal-macros">
+            <span class="cal">${m.calories} kcal</span>
+            <span class="prot">${m.protein}g protein</span>
+            <button class="delete-btn" onclick="deleteMeal(${i})" title="Remove">×</button>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  function deleteMeal(i) {
+    meals.splice(i, 1);
+    saveMeals();
+    updateSummary();
+    renderMeals();
+  }
+
+  async function logFood() {
+    const input = document.getElementById('food-input');
+    const btn   = document.getElementById('log-btn');
+    const indicator = document.getElementById('parsing-indicator');
+    const text  = input.value.trim();
+    if (!text) return;
+
+    btn.disabled = true;
+    indicator.classList.add('active');
+
+    // Simulate async API call delay
+    await new Promise(r => setTimeout(r, 800));
+
+    const { calories, protein } = estimateNutrition(text);
+    const now = new Date();
+    const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    meals.push({ name: text, calories, protein, time, date: todayKey() });
+    saveMeals();
+    updateSummary();
+    renderMeals();
+
+    input.value = '';
+    input.style.height = '48px';
+    btn.disabled = false;
+    indicator.classList.remove('active');
+  }
+
+  document.getElementById('food-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); logFood(); }
+  });
+
+  // Init
+  document.getElementById('today-date').textContent = new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
+  document.getElementById('cal-goal').textContent  = GOALS.calories;
+  document.getElementById('prot-goal').textContent = GOALS.protein;
+  updateSummary();
+  renderMeals();
+</script>
+</body>
+</html>
