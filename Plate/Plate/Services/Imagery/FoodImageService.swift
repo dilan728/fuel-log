@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import OSLog
 
 /// Generates the studio photograph for a food, or reports that it can't.
@@ -23,12 +24,14 @@ actor FoodImageService {
 
     enum Failure: LocalizedError {
         case noProvider
+        case renderFailed
         case http(status: Int, message: String)
         case noImageInResponse
 
         var errorDescription: String? {
             switch self {
             case .noProvider: return "No image key configured."
+            case .renderFailed: return "Could not render this dish."
             case .http(let status, let message):
                 return message.isEmpty ? "Image request failed (\(status))." : message
             case .noImageInResponse: return "The response contained no image."
@@ -52,41 +55,79 @@ actor FoodImageService {
         return nil
     }
 
+    /// True when a real photography backend is configured. Imagery itself is always
+    /// available — the renderer needs nothing.
     nonisolated var isConfigured: Bool { provider != nil }
 
-    /// Returns the cache file name for this food, generating it if needed.
+    /// Returns the cache file name for this food, producing it if needed.
     ///
-    /// Throws rather than returning nil so the caller can record *why* an entry has no
-    /// photograph — which the Settings diagnostics shows and the main flow never does.
+    /// With a key configured this is a generated photograph; without one it is a local
+    /// render of the same dish. Both end up as a cached JPEG, so every entry in the app
+    /// has a real image file behind it and the rest of the UI needs no special case.
     func image(for entry: FoodEntry) async throws -> String {
-        let key = ImageCache.key(forFood: entry.name)
+        if let provider {
+            let key = ImageCache.key(forFood: entry.name, kind: .photographed)
+            if cache.hasImage(for: key) { return key }
+            if let existing = inFlight[key] { return try await existing.value }
 
+            let prompt = ImagePromptRecipe.prompt(
+                for: entry.name,
+                detail: entry.detail,
+                quantity: entry.quantity
+            )
+
+            let task = Task<String, Error> { [cache, logger] in
+                let data: Data
+                switch provider {
+                case .gemini: data = try await Self.generateWithGemini(prompt: prompt)
+                case .openAI: data = try await Self.generateWithOpenAI(prompt: prompt)
+                }
+                guard cache.write(data, for: key) != nil else { throw Failure.noImageInResponse }
+                logger.info("Photographed \(entry.name, privacy: .public)")
+                return key
+            }
+
+            inFlight[key] = task
+            defer { inFlight[key] = nil }
+            return try await task.value
+        }
+
+        return try await renderedKey(forFood: entry.name)
+    }
+
+    /// Renders a dish locally and caches it. Also the path used by anything that wants
+    /// an image for a food that is not a logged entry.
+    func renderedKey(forFood name: String) async throws -> String {
+        let key = ImageCache.key(forFood: name, kind: .rendered)
         if cache.hasImage(for: key) { return key }
-
         if let existing = inFlight[key] { return try await existing.value }
 
-        guard let provider else { throw Failure.noProvider }
-
-        let prompt = ImagePromptRecipe.prompt(
-            for: entry.name,
-            detail: entry.detail,
-            quantity: entry.quantity
-        )
-
-        let task = Task<String, Error> { [cache, logger] in
-            let data: Data
-            switch provider {
-            case .gemini: data = try await Self.generateWithGemini(prompt: prompt)
-            case .openAI: data = try await Self.generateWithOpenAI(prompt: prompt)
+        let task = Task<String, Error> { [cache] in
+            let recipe = FoodSceneRecipe(food: name)
+            // Off the cooperative pool: this is a long, blocking GPU wait, and leaving
+            // it on a shared executor stalls unrelated work.
+            let image: UIImage? = await withCheckedContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    continuation.resume(returning: FoodSceneRenderer.shared.render(recipe))
+                }
             }
-            guard cache.write(data, for: key) != nil else { throw Failure.noImageInResponse }
-            logger.info("Generated image for \(entry.name, privacy: .public)")
+            guard let image, let data = image.jpegData(compressionQuality: 0.9),
+                  cache.write(data, for: key) != nil
+            else { throw Failure.renderFailed }
             return key
         }
 
         inFlight[key] = task
         defer { inFlight[key] = nil }
         return try await task.value
+    }
+
+    /// Convenience for views that want a rendered dish directly.
+    nonisolated func renderedImage(forFood name: String) async -> UIImage? {
+        let key = ImageCache.key(forFood: name, kind: .rendered)
+        if let cached = ImageCache.shared.image(for: key) { return cached }
+        guard (try? await renderedKey(forFood: name)) != nil else { return nil }
+        return ImageCache.shared.image(for: key)
     }
 
     // MARK: Gemini

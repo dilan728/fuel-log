@@ -89,9 +89,8 @@ struct SettingsView: View {
                 }
                 .padding(14)
 
-                if FoodImageService.shared.isConfigured {
-                    Divider().overlay(Palette.hairline)
-                    Button {
+                Divider().overlay(Palette.hairline)
+                Button {
                         isBackfilling = true
                         Task {
                             await app.backfillImages()
@@ -100,7 +99,11 @@ struct SettingsView: View {
                         }
                     } label: {
                         HStack {
-                            Text(isBackfilling ? "Filling in…" : "Photograph past meals")
+                            Text(isBackfilling
+                                 ? "Working…"
+                                 : (FoodImageService.shared.isConfigured
+                                    ? "Photograph past meals"
+                                    : "Render past meals"))
                             Spacer()
                             if isBackfilling { ProgressView().controlSize(.small) }
                         }
@@ -109,7 +112,6 @@ struct SettingsView: View {
                         .padding(14)
                     }
                     .disabled(isBackfilling)
-                }
 
                 Divider().overlay(Palette.hairline)
                 Button {

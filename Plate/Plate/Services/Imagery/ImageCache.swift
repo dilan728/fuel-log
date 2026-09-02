@@ -25,14 +25,25 @@ final class ImageCache: @unchecked Sendable {
         memory.totalCostLimit = 40 * 1024 * 1024
     }
 
+    /// Where an image comes from. Both are cached the same way; they differ only in
+    /// that a procedural render is superseded when the renderer changes.
+    enum Kind: Hashable, Sendable {
+        case photographed
+        case rendered
+    }
+
     /// The stable file name for a food. Safe for the file system and stable across
     /// launches, unlike anything derived from `hashValue`.
-    static func key(forFood name: String) -> String {
+    static func key(forFood name: String, kind: Kind = .photographed) -> String {
         let normalized = NutritionDatabase.normalize(name).replacingOccurrences(of: " ", with: "-")
         let trimmed = normalized.isEmpty ? "food" : String(normalized.prefix(60))
         // Suffix with a stable hash so two foods that normalise identically but read
         // differently still get their own file.
-        return "\(trimmed)-\(FoodEntry.seed(for: name)).jpg"
+        let stem = "\(trimmed)-\(FoodEntry.seed(for: name))"
+        switch kind {
+        case .photographed: return "\(stem).jpg"
+        case .rendered: return "\(stem)-r\(FoodSceneRenderer.version).jpg"
+        }
     }
 
     func image(for fileName: String) -> UIImage? {

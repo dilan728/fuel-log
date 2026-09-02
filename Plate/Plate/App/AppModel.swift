@@ -137,23 +137,24 @@ final class AppModel {
     /// service de-duplicates by food, and abandoned foods are not retried.
     func ensureImage(for entry: FoodEntry, on day: DayID) {
         guard case .none = entry.image else { return }
-        guard !abandonedImageKeys.contains(ImageCache.key(forFood: entry.name)) else { return }
+        guard !abandonedImageKeys.contains(entry.name) else { return }
         let session = session(for: day)
         Task { await generateImage(for: entry, in: session) }
     }
 
     private func generateImage(for entry: FoodEntry, in session: ThreadSession) async {
-        let key = ImageCache.key(forFood: entry.name)
-        guard !abandonedImageKeys.contains(key) else { return }
+        let key = ImageCache.key(
+            forFood: entry.name,
+            kind: imageService.isConfigured ? .photographed : .rendered
+        )
+        guard !abandonedImageKeys.contains(entry.name) else { return }
 
-        // Already photographed under a previous entry for the same food — adopt it
-        // without a request. This is why the cache is keyed by food, not by entry.
+        // Already produced under a previous entry for the same food — adopt it without
+        // any work. This is why the cache is keyed by food, not by entry.
         if ImageCache.shared.hasImage(for: key) {
             await session.updateEntry(entry.id) { $0.image = .ready(fileName: key) }
             return
         }
-
-        guard imageService.isConfigured else { return }
 
         await session.updateEntry(entry.id) { $0.image = .generating }
 
@@ -163,7 +164,7 @@ final class AppModel {
             Haptics.shared.materialize()
         } catch {
             logger.error("Imagery failed for \(entry.name, privacy: .public): \(error.localizedDescription)")
-            abandonedImageKeys.insert(key)
+            abandonedImageKeys.insert(entry.name)
             await session.updateEntry(entry.id) {
                 $0.image = .failed(reason: error.localizedDescription)
             }

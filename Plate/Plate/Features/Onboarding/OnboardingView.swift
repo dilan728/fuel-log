@@ -172,7 +172,7 @@ struct OnboardingView: View {
 
     private func plate(_ food: String, at unit: CGPoint, size: CGFloat, phase: Double) -> some View {
         GeometryReader { proxy in
-            ProceduralPlateView(food: food)
+            RenderedFoodView(name: food)
                 .frame(width: size, height: size)
                 .clipShape(Circle())
                 .position(

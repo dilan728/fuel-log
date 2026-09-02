@@ -15,68 +15,66 @@ struct FoodPalette: Equatable, Sendable {
     /// catalog look like it was shot in the same room.
     static let studioGround = Palette.dynamic(light: 0xF2EBE0, dark: 0x2A2622)
 
-    private static let table: [(keys: [String], primary: UInt32, secondary: UInt32)] = [
+    /// Bread, dough, pastry. The thing a topping sits on. Kept separate from the food
+    /// palette because a pizza's base is crust-coloured, not tomato-coloured, and the
+    /// first render made both layers red.
+    static let breadBase = Palette.dynamic(light: 0xCBA372, dark: 0xCBA372)
+
+    private static let table: [(value: (primary: UInt32, secondary: UInt32), keys: [String])] = [
         // Greens
-        (["salad", "spinach", "kale", "broccoli", "pesto", "guacamole", "avocado",
+        ((primary: 0x6E8F4A, secondary: 0x9DBE6B), keys: ["salad", "spinach", "kale", "broccoli", "pesto", "guacamole", "avocado",
           "edamame", "green bean", "asparagus", "cucumber", "lettuce", "arugula",
-          "pea", "zucchini", "matcha", "brussels"], 0x6E8F4A, 0x9DBE6B),
+          "pea", "zucchini", "matcha", "brussels"]),
         // Reds / tomato
-        (["tomato", "marinara", "pizza", "strawberry", "raspberry", "beet",
-          "watermelon", "salsa", "chili", "pepperoni", "ketchup", "cherry"], 0xB63A2C, 0xD9614A),
+        ((primary: 0xB63A2C, secondary: 0xD9614A), keys: ["tomato", "marinara", "pizza", "strawberry", "raspberry", "beet",
+          "watermelon", "salsa", "chili", "pepperoni", "ketchup", "cherry"]),
         // Browns / roasted / meat
-        (["steak", "beef", "burger", "brisket", "meatball", "sausage", "bacon",
+        ((primary: 0x6B4128, secondary: 0x9A6238), keys: ["steak", "beef", "burger", "brisket", "meatball", "sausage", "bacon",
           "roast", "gravy", "mushroom", "chocolate", "coffee", "brownie",
-          "pork", "lamb", "barbecue", "bbq", "shawarma", "kebab"], 0x6B4128, 0x9A6238),
+          "pork", "lamb", "barbecue", "bbq", "shawarma", "kebab"]),
         // Golden / fried / bread / grain
-        (["bread", "toast", "bagel", "fries", "chicken", "waffle", "pancake",
+        ((primary: 0xC08A3E, secondary: 0xE0B268), keys: ["bread", "toast", "bagel", "fries", "chicken", "waffle", "pancake",
           "croissant", "cracker", "cereal", "granola", "tortilla", "taco",
           "burrito", "sandwich", "wrap", "pastry", "muffin", "donut",
-          "cookie", "biscuit", "falafel", "tempura", "schnitzel"], 0xC08A3E, 0xE0B268),
+          "cookie", "biscuit", "falafel", "tempura", "schnitzel"]),
         // Pale / dairy / rice / pasta
-        (["rice", "pasta", "noodle", "yogurt", "milk", "cheese", "egg",
+        ((primary: 0xD6C3A0, secondary: 0xEFE3C8), keys: ["rice", "pasta", "noodle", "yogurt", "milk", "cheese", "egg",
           "tofu", "oat", "porridge", "hummus", "potato", "dumpling",
-          "ramen", "risotto", "quinoa", "couscous"], 0xD6C3A0, 0xEFE3C8),
+          "ramen", "risotto", "quinoa", "couscous"]),
         // Orange
-        (["carrot", "sweet potato", "pumpkin", "squash", "mango", "peach",
-          "apricot", "orange", "salmon", "curry", "paprika"], 0xC96A24, 0xE79449),
+        ((primary: 0xC96A24, secondary: 0xE79449), keys: ["carrot", "sweet potato", "pumpkin", "squash", "mango", "peach",
+          "apricot", "orange", "salmon", "curry", "paprika"]),
         // Purple / berry
-        (["blueberry", "blackberry", "grape", "eggplant", "aubergine",
-          "plum", "fig", "acai", "cabbage"], 0x5A3B6B, 0x8A5FA0),
+        ((primary: 0x5E4869, secondary: 0x8E7A9C), keys: ["blueberry", "blueberries", "blackberry", "grape", "eggplant", "aubergine",
+          "plum", "fig", "acai", "cabbage"]),
         // Greens-pale / fruit
-        (["apple", "pear", "kiwi", "lime", "melon", "grape"], 0x8FA84E, 0xC2D186),
+        ((primary: 0x8FA84E, secondary: 0xC2D186), keys: ["apple", "pear", "kiwi", "lime", "melon", "grape"]),
         // Yellows
-        (["banana", "corn", "lemon", "mustard", "pineapple", "butter",
-          "omelette", "custard"], 0xD9B03C, 0xF0D477),
+        ((primary: 0xD9B03C, secondary: 0xF0D477), keys: ["banana", "corn", "lemon", "mustard", "pineapple", "butter",
+          "omelette", "custard"]),
+        // Nuts. Without these they fell through to the amber default and rendered olive.
+        ((primary: 0x9A7247, secondary: 0xC7A377), keys: ["almond", "almonds", "cashew", "cashews",
+          "walnut", "walnuts", "peanut", "peanuts", "pistachio", "pistachios", "nuts",
+          "pecan", "hazelnut", "trail mix"]),
         // Drinks — coffee family. Dark liquid, pale crema.
-        (["coffee", "espresso", "americano", "latte", "cappuccino", "flat white",
-          "macchiato", "mocha", "cold brew"], 0x4A2E1E, 0xB98E63),
-        (["tea", "chai", "kombucha"], 0x9A6B33, 0xC79A5E),
-        (["milk", "milkshake", "horchata"], 0xF0EAE0, 0xFFFFFF),
-        (["beer", "lager", "ale", "cider"], 0xC98A1E, 0xE8B84B),
-        (["wine", "sangria"], 0x6E1F2E, 0x9E3A4C),
-        (["water", "sparkling water", "soda water"], 0xD8E4E8, 0xF0F6F8),
-        (["cola", "coke", "root beer"], 0x3A2118, 0x6B3E28),
-        (["lemonade", "orange juice", "juice"], 0xE0A62A, 0xF5CE68)
+        ((primary: 0x63412A, secondary: 0xC29A72), keys: ["coffee", "espresso", "americano", "latte", "cappuccino", "flat white",
+          "macchiato", "mocha", "cold brew"]),
+        ((primary: 0x9A6B33, secondary: 0xC79A5E), keys: ["tea", "chai", "kombucha"]),
+        ((primary: 0xF0EAE0, secondary: 0xFFFFFF), keys: ["milk", "milkshake", "horchata"]),
+        ((primary: 0xC98A1E, secondary: 0xE8B84B), keys: ["beer", "lager", "ale", "cider"]),
+        ((primary: 0x6E1F2E, secondary: 0x9E3A4C), keys: ["wine", "sangria"]),
+        ((primary: 0xD8E4E8, secondary: 0xF0F6F8), keys: ["water", "sparkling water", "soda water"]),
+        ((primary: 0x3A2118, secondary: 0x6B3E28), keys: ["cola", "coke", "root beer"]),
+        ((primary: 0xE0A62A, secondary: 0xF5CE68), keys: ["lemonade", "orange juice", "juice"])
     ]
 
-    /// Longest-match wins, so "sweet potato" beats "potato" and "chicken salad"
-    /// resolves to salad-green only if "salad" appears later in the name than "chicken".
+    /// Scored by `KeywordMatch`: whole words only, and the head noun of the dish wins.
+    /// "Steak and Roast Potatoes" is a steak dish, even though "potato" is the longer word.
     static func forFood(_ name: String) -> FoodPalette {
-        let needle = name.lowercased()
-        var best: (length: Int, primary: UInt32, secondary: UInt32)?
-
-        for row in table {
-            for key in row.keys where needle.contains(key) {
-                if best == nil || key.count > best!.length {
-                    best = (key.count, row.primary, row.secondary)
-                }
-            }
-        }
-
-        guard let best else { return neutral(for: name) }
+        guard let match = KeywordMatch.best(table, in: name) else { return neutral(for: name) }
         return FoodPalette(
-            primary: Palette.dynamic(light: best.primary, dark: lighten(best.primary)),
-            secondary: Palette.dynamic(light: best.secondary, dark: lighten(best.secondary)),
+            primary: Palette.dynamic(light: match.primary, dark: lighten(match.primary)),
+            secondary: Palette.dynamic(light: match.secondary, dark: lighten(match.secondary)),
             ground: studioGround
         )
     }

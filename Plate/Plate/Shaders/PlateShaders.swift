@@ -111,23 +111,6 @@ enum PlateShaders {
         )
     }
 
-    static func proceduralPlate(
-        size: CGSize,
-        seed: UInt32,
-        form: FoodForm,
-        hueA: Color,
-        hueB: Color,
-        ground: Color
-    ) -> Shader {
-        ShaderLibrary.proceduralPlate(
-            .float2(size),
-            .float(Float(seed % 9973) / 31.0),
-            .float(Float(form.shaderValue)),
-            .color(hueA),
-            .color(hueB),
-            .color(ground)
-        )
-    }
 }
 
 // MARK: - Time source

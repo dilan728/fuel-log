@@ -1,27 +1,32 @@
 import SwiftUI
 
-/// A food's picture, whatever state it happens to be in.
+/// A food's picture.
 ///
-/// There is no empty state and no spinner. The procedural plate is always drawn
-/// underneath, so a card is complete the instant it appears; a generated photograph,
-/// when it arrives, materialises on top of it. That ordering is what lets the app be
-/// pleasant with no API keys and better with them, rather than broken without.
+/// Every entry has one: either a generated photograph or a locally path-marched render
+/// of the same dish. Both arrive as a cached JPEG, so this view has exactly one job —
+/// show the image, and show something calm while it is being made.
 struct FoodImageView: View {
     let entry: FoodEntry
-    var cornerRadius: CGFloat = 16
+    var cornerRadius: CGFloat = 4
 
     @State private var photograph: UIImage?
     @State private var reveal: Double = 0
 
     private var palette: FoodPalette { .forFood(entry.name) }
-    private var form: FoodForm { .infer(from: entry.name) }
 
     var body: some View {
         ZStack {
-            ProceduralPlateView(seed: entry.imageSeed, palette: palette, form: form)
+            // The placeholder is the studio backdrop the render will land on, tinted a
+            // fraction toward the dish — so the tile never changes colour temperature
+            // when the image arrives, only gains detail.
+            Rectangle()
+                .fill(FoodPalette.studioGround)
+                .overlay {
+                    Rectangle().fill(palette.primary.opacity(0.07))
+                }
                 .plateShimmer(
-                    sheen: Palette.ember.opacity(0.5),
-                    isActive: entry.image.isGenerating
+                    sheen: Palette.ember.opacity(0.34),
+                    isActive: photograph == nil
                 )
 
             if let photograph {
@@ -36,10 +41,6 @@ struct FoodImageView: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .strokeBorder(Palette.hairline, lineWidth: 0.5)
-        }
         .task(id: entry.image) { await load() }
         .accessibilityHidden(true)
     }
@@ -50,16 +51,39 @@ struct FoodImageView: View {
             reveal = 0
             return
         }
-
-        // Already on screen from a previous pass — don't re-run the reveal, which
-        // would make images flicker every time the list re-diffs.
+        // Already on screen from a previous pass — don't re-run the reveal, which would
+        // make images flicker every time the list re-diffs.
         if photograph != nil, reveal >= 1 { return }
-
         guard let image = ImageCache.shared.image(for: fileName) else { return }
-        photograph = image
 
-        withAnimation(.easeOut(duration: Motion.materializeDuration)) {
-            reveal = 1
+        photograph = image
+        withAnimation(.easeOut(duration: Motion.materializeDuration)) { reveal = 1 }
+    }
+}
+
+/// A rendered dish for somewhere that has no `FoodEntry` behind it — the onboarding
+/// backdrop, previews. Renders on demand and caches like everything else.
+struct RenderedFoodView: View {
+    let name: String
+    var cornerRadius: CGFloat = 0
+
+    @State private var image: UIImage?
+
+    var body: some View {
+        ZStack {
+            Rectangle().fill(FoodPalette.studioGround)
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .transition(.opacity)
+            }
         }
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .task {
+            let rendered = await FoodImageService.shared.renderedImage(forFood: name)
+            withAnimation(.easeOut(duration: 0.5)) { image = rendered }
+        }
+        .accessibilityHidden(true)
     }
 }

@@ -35,36 +35,22 @@ enum FoodForm: String, Sendable, Equatable, CaseIterable {
         "edamame", "berries", "fruit", "beans", "lentils", "quinoa", "couscous"
     ]
 
-    /// Longest match wins, and glass is checked first — "green smoothie bowl" is a
-    /// bowl, but "iced coffee" should never be one.
-    ///
-    /// Matching is on whole words. Plain `contains` served steak in a glass, because
-    /// "s-TEA-k" contains "tea".
+    /// Scored by `KeywordMatch`. Glass wins ties, so "iced coffee" is never a bowl.
     static func infer(from name: String) -> FoodForm {
-        let lowered = name.lowercased()
-        let cleaned = String(lowered.map { $0.isLetter || $0.isNumber ? $0 : " " })
-        let words = Set(cleaned.split(separator: " ").map(String.init))
+        let context = KeywordMatch.Context(name)
 
-        func longestMatch(in vocabulary: [String]) -> Int? {
-            var best: Int?
-            for phrase in vocabulary {
-                // Multi-word entries ("flat white") match as a phrase; single words
-                // must match a whole word.
-                let hit = phrase.contains(" ") ? lowered.contains(phrase) : words.contains(phrase)
-                guard hit else { continue }
-                best = max(best ?? 0, phrase.count)
-            }
-            return best
+        func bestScore(_ vocabulary: [String]) -> Int? {
+            vocabulary.compactMap { KeywordMatch.score($0, in: context) }.max()
         }
 
-        let glassHit = longestMatch(in: glassWords)
-        let bowlHit = longestMatch(in: bowlWords)
+        let glass = bestScore(glassWords)
+        let bowl = bestScore(bowlWords)
 
-        switch (glassHit, bowlHit) {
+        switch (glass, bowl) {
         case (nil, nil): return .plate
-        case (let glass?, nil): _ = glass; return .glass
+        case (_?, nil): return .glass
         case (nil, _?): return .bowl
-        case (let glass?, let bowl?): return glass >= bowl ? .glass : .bowl
+        case (let g?, let b?): return g >= b ? .glass : .bowl
         }
     }
 }
