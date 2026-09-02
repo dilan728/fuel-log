@@ -2,16 +2,19 @@ import SwiftUI
 
 /// A pane of glass.
 ///
-/// The refraction is real: the shape is filled with a system material, which has
-/// already rasterized a blurred copy of whatever is behind it, and `liquidGlass` then
-/// bends the sample position along the shape's own surface normal near the rim. The
-/// middle of the pane is left undistorted so text laid over it stays crisp.
+/// A real `.ultraThinMaterial` provides the blur — the system is the only thing that
+/// can sample the backdrop — and `glassRim` is drawn over it to add the rim lighting,
+/// counter-highlight and face sheen that make it read as a solid object with an edge
+/// rather than as a blurred rectangle.
+///
+/// The refraction shader is deliberately *not* used here: a `layerEffect` over a
+/// material samples an empty layer, which renders the pane black.
 struct GlassSurface: View {
     var cornerRadius: CGFloat = 24
-    /// How far in from the rim the refraction reaches, in points.
+    /// How far in from the rim the lighting reaches, in points.
     var thickness: CGFloat = 14
-    /// Direction of the key light, in radians. Default is upper-left, matching the
-    /// procedural plate renderer so the whole app agrees where the light is.
+    /// Direction of the key light, in radians. Upper-left, matching the procedural
+    /// plate renderer, so the whole app agrees where the light is coming from.
     var lightAngle: Double = -.pi * 0.62
     var material: Material = .ultraThinMaterial
 
@@ -23,7 +26,7 @@ struct GlassSurface: View {
     }
 
     private var specular: Color {
-        colorScheme == .dark ? Color.white.opacity(0.34) : Color.white.opacity(0.55)
+        colorScheme == .dark ? Color.white.opacity(0.62) : Color.white
     }
 
     var body: some View {
@@ -34,27 +37,27 @@ struct GlassSurface: View {
         } else {
             shape
                 .fill(material)
-                .plateLiquidGlass(
-                    cornerRadius: cornerRadius,
-                    thickness: thickness,
-                    lightAngle: lightAngle,
-                    specular: specular
-                )
-                .overlay(
-                    // A hairline that survives the refraction, so the pane always has
-                    // a crisp boundary even where the specular falls off.
+                .overlay {
+                    shape
+                        .fill(.white)
+                        .plateGlassRim(
+                            cornerRadius: cornerRadius,
+                            thickness: thickness,
+                            lightAngle: lightAngle,
+                            specular: specular
+                        )
+                        .allowsHitTesting(false)
+                }
+                .overlay {
+                    // A hairline so the pane keeps a crisp boundary on the unlit side,
+                    // where the specular falls to nothing.
                     shape.strokeBorder(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(colorScheme == .dark ? 0.20 : 0.60),
-                                Color.white.opacity(0.04)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        ),
-                        lineWidth: 0.6
+                        Palette.ink.opacity(colorScheme == .dark ? 0.16 : 0.07),
+                        lineWidth: 0.5
                     )
-                )
+                }
+                .compositingGroup()
+                .shadow(color: .black.opacity(colorScheme == .dark ? 0.35 : 0.09), radius: 12, y: 4)
         }
     }
 }

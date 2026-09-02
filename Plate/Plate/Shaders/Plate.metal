@@ -189,15 +189,21 @@ static float luminance(half3 c) {
     return clamp(bloomed, 0.0h, 1.0h);
 }
 
-// MARK: - liquidGlass (layerEffect)
+// MARK: - Glass
 //
-// Applied to a shape filled with a system material. Because that material has already
-// rasterized a blurred copy of whatever is behind it, offsetting our sample position
-// near the rim genuinely refracts the backdrop — this is real refraction of real
-// content, not a painted-on gradient.
+// Two functions, because two different jobs turned out to need two different tools.
 //
-// `cornerRadius` and `size` describe the shape so we can compute a signed distance
-// field and therefore a surface normal to refract along.
+// `liquidGlass` (layerEffect) genuinely refracts: it offsets the sample position along
+// the shape's surface normal near the rim. It requires content that actually rasterizes
+// into the layer — an image, a card, a view hierarchy. It does NOT work over a system
+// material: SwiftUI does not composite a backdrop material into the offscreen layer a
+// shader reads from, so `layer.sample` returns nothing and the pane renders black.
+// (Learned the hard way; the first build of the composer was a black slab.)
+//
+// `glassRim` (colorEffect) is what floating bars use. It computes rim lighting and
+// specular analytically from the same signed distance field, samples nothing, and is
+// drawn *over* a real `.ultraThinMaterial` — so the blur is genuine even though the
+// highlight is computed. Cheaper, and correct in the case that actually ships.
 
 static float roundedBoxSDF(float2 p, float2 halfSize, float radius) {
     float2 q = abs(p) - halfSize + radius;
@@ -243,6 +249,47 @@ static float roundedBoxSDF(float2 p, float2 halfSize, float radius) {
     result += specular * 0.03h * result.a;
 
     return clamp(result, 0.0h, 1.0h);
+}
+
+/// Rim lighting for a pane of glass, drawn over a real material.
+///
+/// Output is premultiplied and mostly transparent — this is an overlay, not a fill.
+[[ stitchable ]] half4 glassRim(float2 position,
+                                half4 color,
+                                float2 size,
+                                float cornerRadius,
+                                float thickness,
+                                float lightAngle,
+                                half4 specular) {
+    if (color.a < 0.001h) { return half4(0.0h); }
+
+    float2 half_ = size * 0.5f;
+    float2 p = position - half_;
+    float d = roundedBoxSDF(p, half_, cornerRadius);
+
+    const float eps = 1.0f;
+    float2 normal = normalize(float2(
+        roundedBoxSDF(p + float2(eps, 0.0f), half_, cornerRadius) - roundedBoxSDF(p - float2(eps, 0.0f), half_, cornerRadius),
+        roundedBoxSDF(p + float2(0.0f, eps), half_, cornerRadius) - roundedBoxSDF(p - float2(0.0f, eps), half_, cornerRadius)
+    ) + 1e-5f);
+
+    float edge = 1.0f - smoothstep(-thickness, 0.0f, d);
+
+    float2 lightDir = float2(cos(lightAngle), sin(lightAngle));
+    float facing = max(dot(normal, lightDir), 0.0f);
+
+    // The lit rim, and a tighter counter-highlight reading as the far wall of the pane.
+    float rim = pow(edge, 2.4f) * pow(facing, 1.8f);
+    float backRim = pow(edge, 7.0f) * pow(max(-dot(normal, lightDir), 0.0f), 3.0f) * 0.55f;
+
+    // A broad sheen falling from the light side across the face, which is what stops
+    // the middle of the pane from reading as flat plastic.
+    float sheen = clamp(0.5f - dot(p / max(size, float2(1.0f)), lightDir), 0.0f, 1.0f);
+    float face = sheen * sheen * 0.085f;
+
+    float alpha = clamp(rim * 0.95f + backRim + face, 0.0f, 1.0f) * float(color.a);
+    half a = half(alpha);
+    return half4(specular.rgb * a, a);
 }
 
 // MARK: - emberFlow (colorEffect)
@@ -364,18 +411,23 @@ static float roundedBoxSDF(float2 p, float2 halfSize, float radius) {
 
 // MARK: - proceduralPlate (colorEffect)
 //
-// The zero-configuration food image. When no image backend is available, this draws a
-// plausible plated dish from a seed: a ceramic plate under raking light, with a
-// clustered arrangement of food-colored forms on it. It is deliberately painterly and
-// slightly abstract — an honest stand-in reads better than a bad photo imitation.
+// The zero-configuration food image. With no image backend available this draws a
+// plausible dish from a seed: a vessel under raking studio light, with food in it.
 //
-// `hueA`/`hueB` are chosen in Swift from the food's own name, so pesto pasta is green
-// and a burger is brown without this shader knowing anything about food.
+// It knows three vessels — plate, bowl, glass — because drawing a flat white as a pile
+// of solids on a dinner plate was the single most obviously wrong thing about the first
+// version. `form` picks the vessel; `hueA`/`hueB` come from the food's own name, so this
+// shader never needs to know anything about food.
+//
+// The key light is upper-left, matching `ImagePromptRecipe`, so procedurally-drawn and
+// generated images can sit side by side in the Catalog without the page looking lit
+// from two directions.
 
 [[ stitchable ]] half4 proceduralPlate(float2 position,
                                        half4 color,
                                        float2 size,
                                        float seed,
+                                       float form,
                                        half4 hueA,
                                        half4 hueB,
                                        half4 ground) {
@@ -384,65 +436,141 @@ static float roundedBoxSDF(float2 p, float2 halfSize, float radius) {
     float aspect = size.x / max(size.y, 1.0f);
     p.x *= aspect;
 
-    // --- Backdrop: a soft studio sweep, lit from upper-left.
-    float sweep = 1.0f - length(p - float2(-0.18f, -0.22f)) * 0.72f;
-    half3 col = half3(ground.rgb) * half(clamp(sweep, 0.35f, 1.15f));
+    // --- Backdrop: a wide, gentle sweep. Deliberately shallow — a steep falloff reads
+    // as a vignette rather than as a lit surface, and made the first version murky.
+    float sweep = 1.0f - length(p - float2(-0.24f, -0.28f)) * 0.30f;
+    half3 col = half3(ground.rgb) * half(clamp(sweep, 0.86f, 1.06f));
+    col *= half(0.985f + fbm(p * 7.0f + seed) * 0.03f);   // paper tooth
 
-    // --- The plate: a rounded ceramic disc with a rim.
-    float plateR = length(p) / 0.40f;
-    float plate = 1.0f - smoothstep(0.97f, 1.02f, plateR);
-    float rim = smoothstep(0.80f, 0.90f, plateR) * (1.0f - smoothstep(0.97f, 1.01f, plateR));
+    // --- Vessel geometry.
+    float vesselR, foodR;
+    if (form < 0.5f)      { vesselR = 0.400f; foodR = 0.205f; }  // plate
+    else if (form < 1.5f) { vesselR = 0.345f; foodR = 0.160f; }  // bowl
+    else                  { vesselR = 0.270f; foodR = 0.208f; }  // glass or cup
 
-    // Contact shadow, offset down-right from the light.
-    float shadow = 1.0f - smoothstep(0.85f, 1.28f, length(p - float2(0.045f, 0.055f)) / 0.40f);
-    col *= half(1.0f - shadow * 0.30f);
+    float vd = length(p);
 
-    half3 ceramic = half3(0.95h, 0.94h, 0.92h) * half(clamp(sweep + 0.12f, 0.5f, 1.2f));
-    col = mix(col, ceramic, half(plate));
-    col += half3(rim * 0.10f);   // specular catch on the rim
+    // Contact shadow, offset away from the key light.
+    float shadow = 1.0f - smoothstep(vesselR * 0.98f, vesselR * 1.34f, length(p - float2(0.038f, 0.046f)));
+    col *= half(1.0f - shadow * 0.13f);
 
-    // --- Food: overlapping metaballs clustered inside the plate well.
-    float field = 0.0f;
-    float2 flow = float2(0.0f);
-    for (int i = 0; i < 7; ++i) {
-        float fi = float(i);
-        float2 h = hash22(float2(seed + fi * 3.13f, seed * 0.7f + fi));
-        // Cluster toward the centre; sqrt keeps the distribution area-uniform.
-        float ang = h.x * 6.2831853f;
-        float rad = sqrt(h.y) * 0.235f;
-        float2 c = float2(cos(ang), sin(ang)) * rad;
-        float rr = 0.085f + hash11(seed + fi * 7.7f) * 0.075f;
-        float contribution = rr * rr / max(dot(p - c, p - c), 1e-4f);
-        field += contribution;
-        flow += (p - c) * contribution;
+    // Vessel body.
+    float vessel = 1.0f - smoothstep(vesselR - 0.005f, vesselR + 0.005f, vd);
+    half3 ceramic = half3(0.960h, 0.950h, 0.932h) * half(clamp(sweep + 0.10f, 0.78f, 1.12f));
+    col = mix(col, ceramic, half(vessel));
+
+    // Rim catch — a bright ring just inside the edge, brightest toward the light.
+    float rimBand = smoothstep(vesselR * 0.87f, vesselR * 0.98f, vd)
+                  * (1.0f - smoothstep(vesselR - 0.004f, vesselR + 0.004f, vd));
+    float rimLight = clamp(dot(normalize(p + 1e-5f), float2(-0.66f, -0.75f)) * 0.5f + 0.5f, 0.0f, 1.0f);
+    col += half3(rimBand * (0.05f + rimLight * 0.09f));
+
+    if (form >= 1.5f) {
+        // --- Glass or cup: a disc of liquid with a meniscus and a specular crescent.
+        float liquid = 1.0f - smoothstep(foodR - 0.004f, foodR + 0.004f, vd);
+        if (liquid > 0.001f) {
+            float depth = smoothstep(foodR, foodR * 0.25f, vd);        // darker toward centre
+            half3 drink = mix(half3(hueB.rgb), half3(hueA.rgb), half(depth * 0.85f));
+
+            // Crema / foam: a soft mottled lightening on top for anything milky.
+            float foam = fbm(p * 11.0f + seed * 3.0f);
+            drink = mix(drink, drink + half3(0.10h), half(clamp(foam - 0.45f, 0.0f, 1.0f) * 0.55f));
+
+            // Meniscus — the liquid climbing the vessel wall.
+            float meniscus = smoothstep(foodR * 0.86f, foodR, vd);
+            drink += half3(meniscus * 0.09f);
+
+            col = mix(col, drink, half(liquid));
+
+            // A tight elliptical highlight where the window reflects.
+            float2 h = (p - float2(-0.07f, -0.085f)) * float2(1.0f, 1.9f);
+            col += half3(pow(clamp(1.0f - length(h) * 6.2f, 0.0f, 1.0f), 2.2f) * 0.30f * liquid);
+        }
+    } else {
+        // --- Plate or bowl: overlapping metaballs, clustered in the well.
+        float field = 0.0f;
+        float2 flow = float2(0.0f);
+        for (int i = 0; i < 7; ++i) {
+            float fi = float(i);
+            float2 h = hash22(float2(seed + fi * 3.13f, seed * 0.7f + fi));
+            float ang = h.x * 6.2831853f;
+            float rad = sqrt(h.y) * foodR;                  // area-uniform within the well
+            float2 c = float2(cos(ang), sin(ang)) * rad;
+            float rr = foodR * (0.42f + hash11(seed + fi * 7.7f) * 0.34f);
+            float contribution = rr * rr / max(dot(p - c, p - c), 1e-4f);
+            field += contribution;
+            flow += (p - c) * contribution;
+        }
+
+        float mask = smoothstep(0.78f, 1.12f, field) * vessel;
+
+        if (mask > 0.001f) {
+            // Break the silhouette so it reads as food rather than as bubbles.
+            float texture_ = fbm(p * 16.0f + seed * 5.0f);
+            float coverage = clamp(mask * (0.9f + texture_ * 0.28f), 0.0f, 1.0f);
+
+            // The metaball flow vector stands in for a surface normal, so colour shifts
+            // across each form and picks up the same key light as the vessel.
+            float shade = clamp(dot(normalize(flow + 1e-5f), float2(-0.62f, -0.78f)) * 0.5f + 0.5f, 0.0f, 1.0f);
+            half3 food = mix(half3(hueA.rgb), half3(hueB.rgb), half(shade * 0.7f + texture_ * 0.3f));
+
+            // Ambient occlusion where food meets the vessel, before the specular so the
+            // sheen is not dimmed by it.
+            float contact = (1.0f - smoothstep(0.78f, 1.35f, field)) * 0.34f;
+            food *= half(1.0f - contact);
+
+            // Sheen: oil, glaze, moisture. Tight, and offset toward the light.
+            float sheen = pow(clamp(1.0f - length(p - float2(-0.06f, -0.08f)) * 3.1f, 0.0f, 1.0f), 5.0f);
+            food += half3(sheen * 0.26f);
+
+            col = mix(col, food, half(coverage));
+        }
     }
 
-    float mask = smoothstep(0.85f, 1.35f, field) * plate;
-
-    if (mask > 0.001f) {
-        // Break the blob silhouette with fbm so it reads as food, not as bubbles.
-        float texture_ = fbm(p * 14.0f + seed * 5.0f);
-        float shaped = mask * (0.82f + texture_ * 0.36f);
-
-        // Two-tone: the metaball flow vector stands in for a surface normal, so the
-        // colour shifts across each form and it picks up the same light as the plate.
-        float shade = clamp(dot(normalize(flow + 1e-5f), float2(-0.6f, -0.8f)) * 0.5f + 0.5f, 0.0f, 1.0f);
-        half3 food = mix(half3(hueB.rgb), half3(hueA.rgb), half(shade * 0.65f + texture_ * 0.35f));
-
-        // Specular sheen — oil, glaze, moisture. Tight and offset toward the light.
-        float sheen = pow(clamp(1.0f - length(p - float2(-0.05f, -0.07f)) * 2.6f, 0.0f, 1.0f), 6.0f);
-        food += half3(sheen * 0.32f);
-
-        // Soft occlusion where food meets plate.
-        float contact = smoothstep(1.35f, 0.85f, field) * 0.35f;
-        col = mix(col, food, half(clamp(shaped, 0.0f, 1.0f)));
-        col *= half(1.0f - contact * mask * 0.5f);
-    }
-
-    // --- Global grade: gentle S-curve and a touch of warmth, as a studio shot would have.
+    // --- Grade: a gentle S-curve and a touch of warmth, as a studio shot would have.
     col = clamp(col, 0.0h, 1.0h);
-    col = col * col * (3.0h - 2.0h * col) * 0.55h + col * 0.45h;
-    col *= half3(1.02h, 1.0h, 0.985h);
+    col = col * col * (3.0h - 2.0h * col) * 0.42h + col * 0.58h;
+    col *= half3(1.015h, 1.0h, 0.988h);
 
     return half4(col * color.a, color.a);
+}
+
+// MARK: - Overlay effects
+//
+// `plateGrain` and `softVignette` above are colorEffects applied *to* a view. That
+// works on ordinary content, but a shader (or a blur) applied to an ancestor of a
+// ScrollView suppresses the scroll view's content entirely — SwiftUI cannot rasterize
+// live scrolling content into the offscreen layer a shader reads from, and you get a
+// correctly-sized, completely empty scroll view.
+//
+// So anything that needs to sit over a scrolling surface is drawn as a transparent
+// overlay instead: these two write premultiplied colour with their own alpha onto a
+// plain filled rectangle, which composites over the scroll view without touching it.
+
+[[ stitchable ]] half4 grainOverlay(float2 position,
+                                    half4 color,
+                                    float2 size,
+                                    float time,
+                                    float intensity) {
+    float2 jitter = float2(hash11(floor(time * 24.0f)) * 512.0f,
+                           hash11(floor(time * 24.0f) + 7.0f) * 512.0f);
+    float n = hash12(position + jitter) - 0.5f;
+
+    // Signed noise becomes alternating light and dark specks rather than a haze.
+    half a = half(fabs(n) * intensity * 2.0f) * color.a;
+    half3 tone = n > 0.0f ? half3(1.0h) : half3(0.0h);
+    return half4(tone * a, a);
+}
+
+[[ stitchable ]] half4 vignetteOverlay(float2 position,
+                                       half4 color,
+                                       float2 size,
+                                       float strength,
+                                       float radius) {
+    float2 uv = (position / max(size, float2(1.0f))) - 0.5f;
+    uv.x *= size.x / max(size.y, 1.0f);
+    float r = length(uv) / max(radius, 0.01f);
+
+    half a = half(smoothstep(0.55f, 1.15f, r) * strength) * color.a;
+    return half4(0.0h, 0.0h, 0.0h, a);   // premultiplied black
 }

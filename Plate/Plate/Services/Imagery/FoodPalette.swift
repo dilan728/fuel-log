@@ -13,7 +13,7 @@ struct FoodPalette: Equatable, Sendable {
 
     /// Warm neutral studio backdrop — the constant that makes every plate in the
     /// catalog look like it was shot in the same room.
-    static let studioGround = Palette.dynamic(light: 0xEDE6DC, dark: 0x24211E)
+    static let studioGround = Palette.dynamic(light: 0xF2EBE0, dark: 0x2A2622)
 
     private static let table: [(keys: [String], primary: UInt32, secondary: UInt32)] = [
         // Greens
@@ -46,7 +46,17 @@ struct FoodPalette: Equatable, Sendable {
         (["apple", "pear", "kiwi", "lime", "melon", "grape"], 0x8FA84E, 0xC2D186),
         // Yellows
         (["banana", "corn", "lemon", "mustard", "pineapple", "butter",
-          "omelette", "custard"], 0xD9B03C, 0xF0D477)
+          "omelette", "custard"], 0xD9B03C, 0xF0D477),
+        // Drinks — coffee family. Dark liquid, pale crema.
+        (["coffee", "espresso", "americano", "latte", "cappuccino", "flat white",
+          "macchiato", "mocha", "cold brew"], 0x4A2E1E, 0xB98E63),
+        (["tea", "chai", "kombucha"], 0x9A6B33, 0xC79A5E),
+        (["milk", "milkshake", "horchata"], 0xF0EAE0, 0xFFFFFF),
+        (["beer", "lager", "ale", "cider"], 0xC98A1E, 0xE8B84B),
+        (["wine", "sangria"], 0x6E1F2E, 0x9E3A4C),
+        (["water", "sparkling water", "soda water"], 0xD8E4E8, 0xF0F6F8),
+        (["cola", "coke", "root beer"], 0x3A2118, 0x6B3E28),
+        (["lemonade", "orange juice", "juice"], 0xE0A62A, 0xF5CE68)
     ]
 
     /// Longest-match wins, so "sweet potato" beats "potato" and "chicken salad"

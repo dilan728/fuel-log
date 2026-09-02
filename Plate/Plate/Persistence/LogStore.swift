@@ -49,10 +49,16 @@ actor LogStore {
     /// Every day with something in it, newest first.
     func knownDays() -> [DayID] {
         if let knownDaysCache { return knownDaysCache }
-        let names = (try? FileManager.default.contentsOfDirectory(atPath: root.path())) ?? []
-        let days = names
-            .filter { $0.hasSuffix(".json") }
-            .compactMap { Self.parseDayID(fileName: $0) }
+        // URL-based, not `contentsOfDirectory(atPath:)`. `URL.path()` percent-encodes
+        // by default, and the container path always contains "Application Support" —
+        // so the string form silently resolves to nothing and every day disappears.
+        let contents = (try? FileManager.default.contentsOfDirectory(
+            at: root,
+            includingPropertiesForKeys: nil
+        )) ?? []
+        let days = contents
+            .filter { $0.pathExtension == "json" }
+            .compactMap { Self.parseDayID(fileName: $0.lastPathComponent) }
             .sorted(by: >)
         knownDaysCache = days
         return days

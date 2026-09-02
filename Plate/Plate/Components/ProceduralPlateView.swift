@@ -9,15 +9,18 @@ import SwiftUI
 struct ProceduralPlateView: View {
     let seed: UInt32
     let palette: FoodPalette
+    let form: FoodForm
 
-    init(seed: UInt32, palette: FoodPalette) {
+    init(seed: UInt32, palette: FoodPalette, form: FoodForm) {
         self.seed = seed
         self.palette = palette
+        self.form = form
     }
 
     init(food name: String, seed: UInt32? = nil) {
         self.seed = seed ?? FoodEntry.seed(for: name)
         self.palette = .forFood(name)
+        self.form = .infer(from: name)
     }
 
     var body: some View {
@@ -30,6 +33,7 @@ struct ProceduralPlateView: View {
                     PlateShaders.proceduralPlate(
                         size: proxy.size,
                         seed: seed,
+                        form: form,
                         hueA: palette.primary,
                         hueB: palette.secondary,
                         ground: palette.ground
@@ -42,7 +46,7 @@ struct ProceduralPlateView: View {
 
 #Preview("Procedural plates") {
     let foods = ["Pesto Pasta", "Cheeseburger", "Blueberry Yogurt", "Chicken Shawarma Bowl",
-                 "Caesar Salad", "Sweet Potato Curry"]
+                 "Caesar Salad", "Sweet Potato Curry", "Flat White", "Orange Juice", "Ramen"]
     ScrollView {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
             ForEach(foods, id: \.self) { food in

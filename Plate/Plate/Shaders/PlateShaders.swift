@@ -62,6 +62,22 @@ enum PlateShaders {
         )
     }
 
+    static func glassRim(
+        size: CGSize,
+        cornerRadius: CGFloat,
+        thickness: CGFloat,
+        lightAngle: Double,
+        specular: Color
+    ) -> Shader {
+        ShaderLibrary.glassRim(
+            .float2(size),
+            .float(Float(cornerRadius)),
+            .float(Float(thickness)),
+            .float(Float(lightAngle)),
+            .color(specular)
+        )
+    }
+
     static func emberFlow(size: CGSize, time: Double, warm: Color, cool: Color) -> Shader {
         ShaderLibrary.emberFlow(
             .float2(size),
@@ -98,6 +114,7 @@ enum PlateShaders {
     static func proceduralPlate(
         size: CGSize,
         seed: UInt32,
+        form: FoodForm,
         hueA: Color,
         hueB: Color,
         ground: Color
@@ -105,6 +122,7 @@ enum PlateShaders {
         ShaderLibrary.proceduralPlate(
             .float2(size),
             .float(Float(seed % 9973) / 31.0),
+            .float(Float(form.shaderValue)),
             .color(hueA),
             .color(hueB),
             .color(ground)
@@ -186,8 +204,9 @@ extension View {
         }
     }
 
-    /// Refracts whatever this view has already rasterized. Intended for a shape filled
-    /// with a system material — see `GlassSurface`.
+    /// Refracts whatever this view has already rasterized. Works on ordinary content —
+    /// images, cards, view hierarchies. It does *not* work over a system material,
+    /// which never rasterizes into the shader's layer; use `plateGlassRim` there.
     func plateLiquidGlass(
         cornerRadius: CGFloat,
         thickness: CGFloat = 14,
@@ -216,6 +235,26 @@ extension View {
                 PlateShaders.pinchWarp(size: proxy.size, amount: amount, chroma: chroma),
                 maxSampleOffset: CGSize(width: 64, height: 64),
                 isEnabled: abs(amount) > 0.001
+            )
+        }
+    }
+
+    /// Analytic rim lighting for a pane of glass. Draw this over a real material.
+    func plateGlassRim(
+        cornerRadius: CGFloat,
+        thickness: CGFloat = 14,
+        lightAngle: Double = -.pi * 0.62,
+        specular: Color
+    ) -> some View {
+        visualEffect { content, proxy in
+            content.colorEffect(
+                PlateShaders.glassRim(
+                    size: proxy.size,
+                    cornerRadius: cornerRadius,
+                    thickness: thickness,
+                    lightAngle: lightAngle,
+                    specular: specular
+                )
             )
         }
     }
