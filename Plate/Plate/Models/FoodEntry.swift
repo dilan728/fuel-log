@@ -49,8 +49,8 @@ struct FoodEntry: Identifiable, Codable, Hashable, Sendable {
 
     /// "2 eggs · Breakfast" — the card subtitle.
     var subtitle: String {
-        let q = quantity.display
-        return q.isEmpty ? meal.title : "\(q) · \(meal.title)"
+        let quantityText = quantity.display
+        return quantityText.isEmpty ? meal.title : "\(quantityText) · \(meal.title)"
     }
 
     /// Deterministic 32-bit hash of the food name. Not security-sensitive; it only

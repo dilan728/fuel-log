@@ -44,11 +44,15 @@ struct Quantity: Codable, Hashable, Sendable {
 
     static let one = Quantity(amount: 1, unit: .serving)
 
-    /// "2 eggs" → amount 2, unit .piece. "180g" → amount 180, unit .gram.
+    /// "2 slices", "180g", "×3". The food's own name sits next to this everywhere it
+    /// is shown, so a bare count is written "×3" rather than "3" — "3 · Breakfast"
+    /// reads as an ID, not a quantity.
     var display: String {
         let n = Self.formatAmount(amount)
         let forms = unit.display
-        guard let word = amount == 1 ? forms.singular : forms.plural else { return n }
+        guard let word = amount == 1 ? forms.singular : forms.plural else {
+            return amount == 1 ? "" : "×\(n)"
+        }
         return unit.isTight ? "\(n)\(word)" : "\(n) \(word)"
     }
 

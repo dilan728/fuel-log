@@ -28,8 +28,12 @@ struct FoodCard: View {
                         .foregroundStyle(Palette.inkFaint)
                         .lineLimit(1)
 
-                    MacroBar(facts: entry.facts)
-                        .padding(.top, 3)
+                    // Below a few calories the macro split is rounding noise, and a
+                    // solid bar for a black coffee reads as a bug.
+                    if entry.facts.calories >= 15 {
+                        MacroBar(facts: entry.facts)
+                            .padding(.top, 3)
+                    }
                 }
 
                 Spacer(minLength: 4)

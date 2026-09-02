@@ -487,43 +487,74 @@ static float roundedBoxSDF(float2 p, float2 halfSize, float radius) {
             col += half3(pow(clamp(1.0f - length(h) * 6.2f, 0.0f, 1.0f), 2.2f) * 0.30f * liquid);
         }
     } else {
-        // --- Plate or bowl: overlapping metaballs, clustered in the well.
-        float field = 0.0f;
-        float2 flow = float2(0.0f);
+        // --- Plate or bowl: several discrete pieces of food.
+        //
+        // The first version summed metaballs into one field, and every dish came out as
+        // a single glossy dome — recognisable only by colour. Tracking the *nearest*
+        // piece instead keeps the pieces separate, gives each one its own surface
+        // normal to light, and leaves a seam where two of them touch.
+        int count = 3 + int(hash11(seed * 1.7f) * 4.0f);      // 3…6 pieces
+
+        float nearest = 1e9f;
+        float second = 1e9f;
+        float2 nearestCentre = float2(0.0f);
+        float nearestRadius = 0.1f;
+
         for (int i = 0; i < 7; ++i) {
+            if (i >= count) { break; }
             float fi = float(i);
             float2 h = hash22(float2(seed + fi * 3.13f, seed * 0.7f + fi));
             float ang = h.x * 6.2831853f;
-            float rad = sqrt(h.y) * foodR;                  // area-uniform within the well
+            float rad = sqrt(h.y) * foodR * 1.02f;            // area-uniform in the well
             float2 c = float2(cos(ang), sin(ang)) * rad;
-            float rr = foodR * (0.42f + hash11(seed + fi * 7.7f) * 0.34f);
-            float contribution = rr * rr / max(dot(p - c, p - c), 1e-4f);
-            field += contribution;
-            flow += (p - c) * contribution;
+            float rr = foodR * (0.40f + hash11(seed + fi * 7.7f) * 0.26f);
+
+            float d = length(p - c) - rr;
+            if (d < nearest) {
+                second = nearest;
+                nearest = d;
+                nearestCentre = c;
+                nearestRadius = rr;
+            } else if (d < second) {
+                second = d;
+            }
         }
 
-        float mask = smoothstep(0.78f, 1.12f, field) * vessel;
+        // Wobble the silhouette so pieces read as food rather than as spheres.
+        nearest += (fbm(p * 19.0f + seed * 4.0f) - 0.5f) * 0.016f;
+
+        float mask = (1.0f - smoothstep(-0.003f, 0.004f, nearest)) * vessel;
 
         if (mask > 0.001f) {
-            // Break the silhouette so it reads as food rather than as bubbles.
-            float texture_ = fbm(p * 16.0f + seed * 5.0f);
-            float coverage = clamp(mask * (0.9f + texture_ * 0.28f), 0.0f, 1.0f);
+            // Treat each piece as a dome and light it properly: this is what makes a
+            // pile of food look like several objects sitting in a dish.
+            float2 offset = p - nearestCentre;
+            float rNorm = clamp(length(offset) / max(nearestRadius, 1e-4f), 0.0f, 1.0f);
+            // Flattened dome. A true hemisphere makes everything look like dumplings;
+            // most food sits much lower than it is wide.
+            float height = sqrt(max(1.0f - rNorm * rNorm, 0.0f)) * 0.55f;
+            float3 normal = normalize(float3(normalize(offset + 1e-5f) * rNorm, height + 0.62f));
 
-            // The metaball flow vector stands in for a surface normal, so colour shifts
-            // across each form and picks up the same key light as the vessel.
-            float shade = clamp(dot(normalize(flow + 1e-5f), float2(-0.62f, -0.78f)) * 0.5f + 0.5f, 0.0f, 1.0f);
-            half3 food = mix(half3(hueA.rgb), half3(hueB.rgb), half(shade * 0.7f + texture_ * 0.3f));
+            const float3 light = normalize(float3(-0.55f, -0.62f, 0.78f));
+            float lambert = clamp(dot(normal, light) * 0.62f + 0.42f, 0.0f, 1.0f);
 
-            // Ambient occlusion where food meets the vessel, before the specular so the
-            // sheen is not dimmed by it.
-            float contact = (1.0f - smoothstep(0.78f, 1.35f, field)) * 0.34f;
-            food *= half(1.0f - contact);
+            float grain = fbm(p * 24.0f + seed * 9.0f);
+            half3 food = mix(half3(hueA.rgb), half3(hueB.rgb), half(lambert * 0.8f + grain * 0.2f));
+            food *= half(0.72f + lambert * 0.42f);
 
-            // Sheen: oil, glaze, moisture. Tight, and offset toward the light.
-            float sheen = pow(clamp(1.0f - length(p - float2(-0.06f, -0.08f)) * 3.1f, 0.0f, 1.0f), 5.0f);
-            food += half3(sheen * 0.26f);
+            // Seam where two pieces meet.
+            float seam = 1.0f - smoothstep(0.0f, 0.022f, second - nearest);
+            food *= half(1.0f - seam * 0.26f);
 
-            col = mix(col, food, half(coverage));
+            // Ambient occlusion into the dish, and a tight specular for gloss.
+            food *= half(1.0f - smoothstep(0.5f, 1.0f, rNorm) * 0.22f);
+            float spec = pow(clamp(dot(normal, light), 0.0f, 1.0f), 16.0f);
+            food += half3(spec * 0.20f);
+
+            // Warm bounce off the dish, so the shadowed side is not dead grey.
+            food += half3(ground.rgb) * half((1.0f - lambert) * 0.14f);
+
+            col = mix(col, food, half(clamp(mask, 0.0f, 1.0f)));
         }
     }
 

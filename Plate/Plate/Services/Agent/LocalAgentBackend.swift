@@ -61,7 +61,18 @@ final class LocalAgentBackend: AgentBackend {
                 continue
             }
 
-            let quantity = parsed.quantity ?? match.record.serving
+            // With an explicit unit, honour it. With a bare count, multiply the
+            // database's own serving — "two eggs" is two servings of egg, not two of
+            // some unit we invented.
+            let serving = match.record.serving
+            let quantity: Quantity
+            if let unit = parsed.unit {
+                quantity = Quantity(amount: parsed.amount ?? 1, unit: unit)
+            } else if let amount = parsed.amount {
+                quantity = Quantity(amount: amount * serving.amount, unit: serving.unit)
+            } else {
+                quantity = serving
+            }
             let scaled = match.record.facts(for: quantity)
 
             items.append([
@@ -277,10 +288,14 @@ private enum FoodPhrase {
             .filter { $0.count > 1 }
     }
 
-    /// Pulls a leading quantity off a phrase: "2 slices of toast" → (2 slices, "toast").
-    static func parse(_ phrase: String) -> (quantity: Quantity?, food: String) {
+    /// Pulls a leading quantity off a phrase: "2 slices of toast" → (2, .slice, "toast").
+    ///
+    /// The unit is reported separately from the amount, and is nil when the phrase gave
+    /// no unit word. That distinction matters: "two eggs" means two of whatever the
+    /// database calls one serving of egg, which is better than assuming "pieces".
+    static func parse(_ phrase: String) -> (amount: Double?, unit: Quantity.Unit?, food: String) {
         var words = phrase.split(separator: " ").map(String.init)
-        guard !words.isEmpty else { return (nil, phrase) }
+        guard !words.isEmpty else { return (nil, nil, phrase) }
 
         var amount: Double?
         if let value = number(from: words[0]) {
@@ -296,15 +311,7 @@ private enum FoodPhrase {
         }
 
         let food = words.joined(separator: " ")
-        guard let amount else {
-            // No number, but a unit is still meaningful: "bowl of oatmeal" is one bowl.
-            return (unit.map { Quantity(amount: 1, unit: $0) }, food.isEmpty ? phrase : food)
-        }
-
-        return (
-            Quantity(amount: amount, unit: unit ?? .piece),
-            food.isEmpty ? phrase : food
-        )
+        return (amount, unit, food.isEmpty ? phrase : food)
     }
 
     static func list(_ items: [String]) -> String {

@@ -34,7 +34,10 @@ struct RootView: View {
             topBar
         }
         .background(Palette.paper)
-        .gesture(pinch)
+        // Simultaneous, not exclusive: `gesture` loses to the buttons and cards inside
+        // the surfaces, so a two-finger pinch that started on a food card was being
+        // delivered as a tap and opening the detail sheet.
+        .simultaneousGesture(pinch)
         .task { await app.bootstrap() }
         .onChange(of: scenePhase) { _, phase in
             // Flush on the way out rather than relying on the debounce timer, which
