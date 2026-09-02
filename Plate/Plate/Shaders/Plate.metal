@@ -273,13 +273,31 @@ static float luminance(half3 c) {
 
     float2 base = center + d * scale;
 
-    // Channel divergence grows with radius and with |amount|.
-    float sep = chroma * abs(amount) * r * 9.0f;
+    // Channel divergence, confined to the corners by a cubic falloff.
+    //
+    // A linear falloff put half a pixel of separation across the middle of the frame,
+    // where the type is — and coloured fringes on 10pt letterforms read as a rendering
+    // fault however subtle they are. Cubed, the effect is nil across the central two
+    // thirds and only appears at the extreme corners, which on this layout is empty page.
+    float sep = chroma * abs(amount) * r * r * r * 7.0f;
     float2 dir = normalize(d + 1e-5f);
 
-    half4 cr = layer.sample(base + dir * sep);
-    half4 cg = layer.sample(base);
-    half4 cb = layer.sample(base - dir * sep);
+    // Fade the split out at the very edge of the frame. The three channels otherwise
+    // sample past the layer at different distances, so one or two of them come back
+    // transparent and the frame gains a coloured outline — which reads as a rendering
+    // fault, not as a lens.
+    float2 uv = position / max(size, float2(1.0f));
+    float2 toEdge = min(uv, 1.0f - uv);
+    sep *= smoothstep(0.0f, 0.055f, min(toEdge.x, toEdge.y));
+
+    // Clamp every sample into the layer. Compressing the frame inward means sampling
+    // *outward*, which off the edge returns nothing and leaves a hard transparent border
+    // around the whole screen. Clamping smears the edge pixel instead, which is
+    // invisible against a flat page.
+    float2 limit = size - 0.5f;
+    half4 cr = layer.sample(clamp(base + dir * sep, float2(0.5f), limit));
+    half4 cg = layer.sample(clamp(base, float2(0.5f), limit));
+    half4 cb = layer.sample(clamp(base - dir * sep, float2(0.5f), limit));
 
     // Average the alphas rather than taking green's, or edges fringe on transparency.
     half alpha = (cr.a + cg.a + cb.a) / 3.0h;

@@ -83,6 +83,15 @@ enum Curve {
         return sign * (1 - (1 / (x * coefficient / dimension + 1))) * dimension
     }
 
+    /// Hermite ramp between two edges. The workhorse for crossfades: a linear fade
+    /// leaves both layers at half strength in the middle, which reads as a wash rather
+    /// than as one thing replacing another.
+    static func smoothstep(_ edge0: Double, _ edge1: Double, _ x: Double) -> Double {
+        guard edge1 != edge0 else { return x < edge0 ? 0 : 1 }
+        let t = min(max((x - edge0) / (edge1 - edge0), 0), 1)
+        return t * t * (3 - 2 * t)
+    }
+
     /// Maps `value` from one range to another, clamped.
     static func remap(_ value: Double, _ inLow: Double, _ inHigh: Double, _ outLow: Double, _ outHigh: Double) -> Double {
         guard inHigh != inLow else { return outLow }

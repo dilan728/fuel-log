@@ -38,7 +38,10 @@ struct RootView: View {
         // the surfaces, so a two-finger pinch that started on a food card was being
         // delivered as a tap and opening the detail sheet.
         .simultaneousGesture(pinch)
-        .task { await app.bootstrap() }
+        .task {
+            await app.bootstrap()
+            await pinTransitionForAudit()
+        }
         .onChange(of: scenePhase) { _, phase in
             // Flush on the way out rather than relying on the debounce timer, which
             // may not fire if the app is suspended immediately.
@@ -82,6 +85,12 @@ struct RootView: View {
         }
     }
 
+    /// How present the arriving surface is. Rises early and is fully in place well
+    /// before the departing still finishes leaving, so one of the two always dominates.
+    private var arrival: Double {
+        Curve.smoothstep(0.10, 0.58, progress)
+    }
+
     /// 0 at the start of the current transition, 1 at its end — whichever way it runs.
     private var progress: Double {
         switch transition?.direction {
@@ -108,8 +117,8 @@ struct RootView: View {
         }
         // Arriving from the Catalog: rises from slightly small. Scale and opacity are
         // safe on a scroll view; blur and shaders are not.
-        .scaleEffect(transition?.direction == .toThread ? 0.9 + 0.1 * progress : 1)
-        .opacity(transition?.direction == .toThread ? min(progress * 1.6, 1) : 1)
+        .scaleEffect(transition?.direction == .toThread ? 0.92 + 0.08 * arrival : 1)
+        .opacity(transition?.direction == .toThread ? arrival : 1)
         .allowsHitTesting(transition == nil)
     }
 
@@ -118,25 +127,49 @@ struct RootView: View {
             app.presentedEntry = .init(id: id, day: day)
         }
         .environment(app)
-        // Arriving from the Thread: rushes toward you from oversized.
-        .scaleEffect(transition?.direction == .toCatalog ? 1.12 - 0.12 * progress : 1)
-        .opacity(transition?.direction == .toCatalog ? max(progress * 1.5 - 0.35, 0) : 1)
+        // Arriving from the Thread: settles back from oversized.
+        .scaleEffect(transition?.direction == .toCatalog ? 1.10 - 0.10 * arrival : 1)
+        .opacity(transition?.direction == .toCatalog ? arrival : 1)
         .allowsHitTesting(transition == nil)
     }
 
     /// The departing surface, warped away.
+    ///
+    /// Two things are tuned against the filmstrip rather than by feel. The fade *holds*
+    /// before it drops, so the arriving surface is never competing with a half-visible
+    /// copy of the one it replaces — a linear crossfade leaves both at half strength in
+    /// the middle and the whole screen reads as a smear. And the lens warp peaks at the
+    /// midpoint instead of at the end, because by the end the layer carrying it is
+    /// already invisible and the effect was being spent where nobody could see it.
     private func still(_ transition: SurfaceTransition) -> some View {
         let leaving = transition.direction == .toCatalog
+        let departure = Curve.smoothstep(0.22, 0.78, progress)
+        // Peaks at the midpoint. At the end the layer carrying it is already invisible,
+        // so a warp that grows monotonically spends itself where nobody can see it.
+        let lens = sin(progress * .pi)
 
         return Image(uiImage: transition.still)
             .resizable()
             .ignoresSafeArea()
-            .scaleEffect(leaving ? 1 - 0.18 * progress : 1 + 0.22 * progress)
-            .blur(radius: progress * 9)
-            .opacity(1 - min(progress * 1.2, 1))
+            .scaleEffect(leaving ? 1 - 0.16 * departure : 1 + 0.20 * departure)
+            .blur(radius: departure * 8)
+            .opacity(1 - departure)
+            // The warp always bends *inward*, whichever way the transition runs, so the
+            // shader only ever samples within its own layer. Bending outward compresses
+            // the frame and exposes its own content edge, which the three channels then
+            // cross at different offsets — the result is a bright cyan hairline tracing
+            // the warped boundary. Recession is carried by `scaleEffect` instead, which
+            // has no sampling to get wrong.
+            //
+            // Magnitudes are small on purpose. The first pass used 1.15 with 1.4x chroma:
+            // fourteen pixels of channel separation at the corners, which turned every
+            // line of text into an RGB smear — a glitch, not a lens.
+            // Chroma is gated on `departure`, so the split only exists once the frame is
+            // already blurred. Aberration on sharp text is a defect; aberration on a
+            // softened frame is a lens.
             .platePinchWarp(
-                amount: (leaving ? -1 : 1) * progress * 0.9,
-                chroma: reduceMotion ? 0 : 1
+                amount: -lens * 0.55,
+                chroma: reduceMotion ? 0 : 0.55 * departure
             )
             .allowsHitTesting(false)
     }
@@ -147,7 +180,9 @@ struct RootView: View {
     // the bars cross-dissolve rather than popping at the end of the transition.
 
     private var chromeOpacity: Double {
-        transition == nil ? 1 : min(progress * 1.4, 1)
+        // Late, and fast. The still already contains a copy of the chrome; fading the
+        // live copy in early puts two of every button on screen at once.
+        transition == nil ? 1 : Curve.smoothstep(0.55, 0.95, progress)
     }
 
     private var composerLayer: some View {
@@ -232,6 +267,27 @@ struct RootView: View {
 
     private var placeholder: String {
         app.focusedDay.isToday ? "What did you eat?" : "Add to \(app.focusedDay.title.lowercased())"
+    }
+
+    /// Freezes the surface transition at an exact progress value.
+    ///
+    /// Screen recordings from the simulator only capture frames when the screen changes,
+    /// which makes a 550ms transition impossible to sample evenly. Pinning the progress
+    /// and screenshotting gives exactly reproducible frames, so a transition can be
+    /// audited step by step and re-checked after a change.
+    private func pinTransitionForAudit() async {
+        #if DEBUG
+        guard let raw = ProcessInfo.processInfo.environment["PLATE_ZOOM"],
+              let value = Double(raw) else { return }
+
+        // Let the thread lay out before it is captured, or the still is of a blank page.
+        try? await Task.sleep(for: .milliseconds(700))
+        guard let image = SurfaceSnapshot.capture() else { return }
+
+        transition = SurfaceTransition(direction: .toCatalog, still: image)
+        app.zoom = min(max(value, 0), 1)
+        app.surface = value > 0.5 ? .catalog : .thread
+        #endif
     }
 
     // MARK: Transition control
