@@ -54,8 +54,11 @@ struct DayThreadView: View {
                     RetryNotice(message: failure) { session.retry() }
                 }
 
-                // Room for the composer, which floats over this scroll view.
-                Color.clear.frame(height: 96)
+                // Room for the composer, which floats over this scroll view. Measured
+                // against the real bar rather than guessed: 96 left the newest row
+                // partly behind it, because the composer's own height, its bottom
+                // padding and the home-indicator inset all stack up.
+                Color.clear.frame(height: 132)
             }
             .plateMargins()
             .padding(.top, Metrics.wide)
@@ -66,7 +69,12 @@ struct DayThreadView: View {
         } action: { _, offset in
             scrollOffset = max(offset, 0)
         }
-        // Keeps the newest message in view as a reply streams in, without a scrollTo
+        // A transcript opens on its newest entry. Coming back from the Catalog rebuilds
+        // this view, and without an initial anchor that landed at the top of the day —
+        // the least useful place to be. An empty day keeps the greeting at the top,
+        // where a page starts.
+        .defaultScrollAnchor(session.messages.isEmpty ? .top : .bottom)
+        // And keeps the newest message in view as a reply streams in, without a scrollTo
         // fighting the user's own scrolling.
         .defaultScrollAnchor(.bottom, for: .sizeChanges)
     }
