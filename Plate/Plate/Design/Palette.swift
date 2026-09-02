@@ -48,9 +48,13 @@ enum Palette {
     // Same hue, three densities. Reads as one family at a glance and stays legible
     // at ring stroke widths of 6pt.
 
+    // Opaque tints, not alpha. Ember at 26% opacity over the near-white ring track has
+    // almost no contrast, so a lightly-filled ring read as three disconnected ticks
+    // rather than one short arc. These are the same colours pre-blended toward the
+    // ground, so they hold their weight over any background.
     static let protein = ember
-    static let carbs = dynamic(light: 0xE2542B, dark: 0xFF6B3D).opacity(0.55)
-    static let fat = dynamic(light: 0xE2542B, dark: 0xFF6B3D).opacity(0.26)
+    static let carbs = dynamic(light: 0xED9E85, dark: 0x9E4A2A)
+    static let fat = dynamic(light: 0xF4CABC, dark: 0x5E2E1C)
 
     /// Unfilled remainder of the ring.
     static let ringTrack = dynamic(light: 0x171511, dark: 0xF5F1EA).opacity(0.07)

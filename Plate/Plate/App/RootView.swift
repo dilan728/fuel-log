@@ -51,6 +51,9 @@ struct RootView: View {
                 .presentationDragIndicator(.visible)
                 .presentationBackground(Palette.paper)
         }
+        .fullScreenCover(isPresented: $app.isShowingOnboarding) {
+            OnboardingView().environment(app)
+        }
         .sheet(isPresented: $app.isShowingSettings) {
             SettingsView()
                 .environment(app)

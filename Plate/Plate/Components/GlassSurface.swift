@@ -26,7 +26,10 @@ struct GlassSurface: View {
     }
 
     private var specular: Color {
-        colorScheme == .dark ? Color.white.opacity(0.62) : Color.white
+        // Much weaker in dark mode. The same highlight that reads as a crisp edge on
+        // paper reads as a glowing white slab against near-black, and the composer
+        // ended up being the brightest thing on the screen.
+        colorScheme == .dark ? Color.white.opacity(0.30) : Color.white
     }
 
     var body: some View {

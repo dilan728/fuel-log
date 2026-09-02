@@ -27,6 +27,7 @@ final class AppModel {
     var profile = UserProfile()
     var presentedEntry: EntryReference?
     var isShowingSettings = false
+    var isShowingOnboarding = false
 
     /// Days that have something logged, newest first. Backs the Catalog.
     private(set) var loggedDays: [DayID] = []
@@ -67,6 +68,7 @@ final class AppModel {
 
     func bootstrap() async {
         profile = await profileStore.profile()
+        isShowingOnboarding = !profile.hasCompletedOnboarding
         loggedDays = await store.knownDays().asyncFilter { await !self.store.day($0).entries.isEmpty }
 
         if let oldest = loggedDays.last {

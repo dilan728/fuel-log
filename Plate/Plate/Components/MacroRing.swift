@@ -42,7 +42,9 @@ struct MacroRing: View {
         ] {
             let length = share / total * scale
             guard length > 0.0005 else { continue }
-            result.append((color, cursor, cursor + length))
+            // Overlap adjacent segments very slightly: butt caps meeting exactly leave
+            // an antialiasing seam that reads as a gap at small ring sizes.
+            result.append((color, cursor, cursor + length + 0.0015))
             cursor += length
         }
         return result
@@ -53,17 +55,21 @@ struct MacroRing: View {
             Circle()
                 .stroke(Palette.ringTrack, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
 
-            ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
-                Circle()
-                    .trim(from: segment.start, to: segment.end)
-                    .stroke(
-                        segment.color,
-                        style: StrokeStyle(lineWidth: lineWidth, lineCap: .butt)
-                    )
-            }
-            // The flow is applied to the segments as a group so the animated gradient
-            // is continuous across macro boundaries rather than restarting at each one.
-            .modifier(EmberFlowModifier())
+            arcs
+
+            // A slow highlight travelling around the filled arcs.
+            //
+            // Masked rather than applied as an effect *over* the arcs. The first version
+            // put the arcs themselves inside a `TimelineView` (via a ViewModifier whose
+            // `content` was used in the timeline closure), which re-evaluated the
+            // animating shapes every frame — their trim animation restarted continuously
+            // and the ring rendered as three stranded ticks instead of one arc. Here the
+            // timeline only ever contains a static rectangle.
+            sheen
+                .mask(arcs)
+                .blendMode(.plusLighter)
+                .opacity(0.30)
+                .allowsHitTesting(false)
 
             // A second, thinner ring for calories past the target.
             if lapFraction > 0 {
@@ -89,6 +95,36 @@ struct MacroRing: View {
         .accessibilityLabel(accessibilityDescription)
     }
 
+    private var arcs: some View {
+        ZStack {
+            ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
+                Circle()
+                    .trim(from: segment.start, to: segment.end)
+                    .stroke(
+                        segment.color,
+                        style: StrokeStyle(lineWidth: lineWidth, lineCap: .butt)
+                    )
+            }
+        }
+    }
+
+    private var sheen: some View {
+        ShaderClock(frozenAt: 1.4) { time in
+            Rectangle()
+                .fill(.white)
+                .visualEffect { content, proxy in
+                    content.colorEffect(
+                        PlateShaders.emberFlow(
+                            size: proxy.size,
+                            time: time,
+                            warm: .white,
+                            cool: .clear
+                        )
+                    )
+                }
+        }
+    }
+
     private var accessibilityDescription: String {
         var parts = ["\(Int(facts.calories.rounded())) calories"]
         if let target { parts.append("of a \(Int(target)) calorie target") }
@@ -96,24 +132,6 @@ struct MacroRing: View {
         parts.append("\(Int(facts.carbs.rounded())) grams carbohydrate")
         parts.append("\(Int(facts.fat.rounded())) grams fat")
         return parts.joined(separator: ", ")
-    }
-}
-
-/// Applies the animated ember gradient across whatever it wraps.
-private struct EmberFlowModifier: ViewModifier {
-    func body(content: Content) -> some View {
-        ShaderClock(frozenAt: 1.4) { time in
-            content.visualEffect { view, proxy in
-                view.colorEffect(
-                    PlateShaders.emberFlow(
-                        size: proxy.size,
-                        time: time,
-                        warm: Palette.ember,
-                        cool: Palette.ember.opacity(0.55)
-                    )
-                )
-            }
-        }
     }
 }
 

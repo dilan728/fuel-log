@@ -26,10 +26,14 @@ struct EntryDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 if let entry {
+                    // Capped and centred rather than full-bleed: at the medium detent a
+                    // full-width square pushed the portion control and macros off the
+                    // bottom, which are the two things this sheet exists for.
                     FoodImageView(entry: entry, cornerRadius: 24)
                         .aspectRatio(1, contentMode: .fit)
-                        .padding(.horizontal, 20)
-                        .padding(.top, 8)
+                        .frame(maxWidth: 232)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 10)
 
                     header(entry)
                     portionControl(entry)
