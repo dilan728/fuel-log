@@ -4,27 +4,21 @@ import SwiftUI
 ///
 /// Shader arguments are positional and untyped at the call site, which makes them a
 /// classic source of silent visual bugs — swap two floats and you get a plausible but
-/// wrong image with no error. Everything funnels through this file so each shader's
-/// signature is written down exactly once.
+/// wrong image with no error. Worse, `ShaderLibrary` resolves by name at *runtime*, so
+/// a wrapper left behind after its shader is deleted still compiles. Everything funnels
+/// through this file so each shader's signature is written down exactly once and the
+/// set of wrappers matches the set of entry points.
 enum PlateShaders {
 
     /// Session-relative clock. Metal floats are 32-bit; feeding them
     /// `timeIntervalSinceReferenceDate` (~8.2e8) leaves about 1/16 s of precision and
-    /// makes every time-based effect visibly quantise. Relative-to-launch keeps us
-    /// near zero where float32 has plenty of resolution.
+    /// makes every time-based effect visibly quantise. Relative-to-launch keeps us near
+    /// zero, where float32 has plenty of resolution.
     static let epoch = Date()
 
     static func now() -> Double { Date().timeIntervalSince(epoch) }
 
     // MARK: Signatures
-
-    static func grain(size: CGSize, time: Double, intensity: Double) -> Shader {
-        ShaderLibrary.plateGrain(
-            .float2(size),
-            .float(Float(time)),
-            .float(Float(intensity))
-        )
-    }
 
     static func materialize(size: CGSize, progress: Double, seed: UInt32, tint: Color) -> Shader {
         ShaderLibrary.materialize(
@@ -34,24 +28,6 @@ enum PlateShaders {
             // decorrelation, not the full entropy, and large floats lose precision.
             .float(Float(seed % 9973) / 97.0),
             .color(tint)
-        )
-    }
-
-    static func tokenBloom(head: CGPoint, radius: CGFloat, strength: Double, tint: Color) -> Shader {
-        ShaderLibrary.tokenBloom(
-            .float2(head),
-            .float(Float(radius)),
-            .float(Float(strength)),
-            .color(tint)
-        )
-    }
-
-    static func emberFlow(size: CGSize, time: Double, warm: Color, cool: Color) -> Shader {
-        ShaderLibrary.emberFlow(
-            .float2(size),
-            .float(Float(time)),
-            .color(warm),
-            .color(cool)
         )
     }
 
@@ -70,15 +46,6 @@ enum PlateShaders {
             .float(Float(chroma))
         )
     }
-
-    static func softVignette(size: CGSize, strength: Double, radius: Double) -> Shader {
-        ShaderLibrary.softVignette(
-            .float2(size),
-            .float(Float(strength)),
-            .float(Float(radius))
-        )
-    }
-
 }
 
 // MARK: - Time source
@@ -87,11 +54,15 @@ enum PlateShaders {
 ///
 /// Two behaviours worth knowing about: it hands out a *session-relative* clock (see
 /// `PlateShaders.epoch`), and when `isActive` is false it collapses to a single static
-/// evaluation. Every animated shader in the app is wrapped in one of these and told
-/// whether it is on screen, so off-screen cards cost nothing.
+/// evaluation, so off-screen work costs nothing.
+///
+/// Note what it must never contain: animating content. Putting a view whose own
+/// animation is in flight inside the timeline closure re-evaluates it every frame and
+/// the animation restarts continuously — which is how the macro ring once rendered as
+/// three stranded ticks instead of an arc.
 struct ShaderClock<Content: View>: View {
     var isActive: Bool = true
-    /// A fixed time used when the clock is stopped. Chosen per-effect so the frozen
+    /// A fixed time used when the clock is stopped. Chosen per effect so the frozen
     /// frame is a flattering one rather than whatever t=0 happens to look like.
     var frozenAt: Double = 3.7
     @ViewBuilder var content: (Double) -> Content
@@ -118,17 +89,6 @@ struct ShaderClock<Content: View>: View {
 
 extension View {
 
-    /// Film grain. Applied once, high in the Catalog hierarchy — not per card.
-    func plateGrain(intensity: Double = 0.055, isActive: Bool = true) -> some View {
-        ShaderClock(isActive: isActive) { time in
-            self.visualEffect { content, proxy in
-                content.colorEffect(
-                    PlateShaders.grain(size: proxy.size, time: time, intensity: intensity)
-                )
-            }
-        }
-    }
-
     /// Reveals content out of noise. `progress` 0…1.
     func plateMaterialize(progress: Double, seed: UInt32, tint: Color) -> some View {
         visualEffect { content, proxy in
@@ -145,16 +105,6 @@ extension View {
         }
     }
 
-    /// Warm bloom trailing a streaming write head.
-    func plateTokenBloom(head: CGPoint, radius: CGFloat = 46, strength: Double = 1, tint: Color) -> some View {
-        visualEffect { content, _ in
-            content.layerEffect(
-                PlateShaders.tokenBloom(head: head, radius: radius, strength: strength, tint: tint),
-                maxSampleOffset: CGSize(width: 4, height: 4)
-            )
-        }
-    }
-
     /// Lens warp with chromatic divergence. `amount` is signed; 0 is a no-op and the
     /// effect is skipped entirely, so this is cheap to leave attached.
     func platePinchWarp(amount: Double, chroma: Double = 1) -> some View {
@@ -167,15 +117,7 @@ extension View {
         }
     }
 
-    func plateVignette(strength: Double = 0.45, radius: Double = 0.78) -> some View {
-        visualEffect { content, proxy in
-            content.colorEffect(
-                PlateShaders.softVignette(size: proxy.size, strength: strength, radius: radius)
-            )
-        }
-    }
-
-    /// Sheen for a card whose image is being generated.
+    /// Sheen for an image that is still being made.
     func plateShimmer(sheen: Color, isActive: Bool = true) -> some View {
         ShaderClock(isActive: isActive) { time in
             self.visualEffect { content, proxy in

@@ -31,6 +31,28 @@ and would catch them again.
 
 ---
 
+## How the design is audited
+
+Screenshots are easy to eyeball and hard to judge, so three tools do the judging.
+All three live in the scratchpad workflow rather than the app.
+
+**`probe.py`** turns a screenshot into numbers: where content actually starts and stops,
+the gap between bands, and the left edge of every one. Misalignment of two or three
+points is invisible to the eye and glaring in a column of integers. It is what found the
+586-colour background, the masthead hanging 2pt inside its column, and the top-bar glyphs
+indented ten.
+
+**A pinned-transition hook.** `PLATE_ZOOM` freezes the surface transition at an exact
+progress value so it can be screenshotted step by step. Simulator screen recordings only
+capture frames when the screen *changes*, which makes a 550ms transition impossible to
+sample evenly; a filmstrip of exact, reproducible frames can be re-checked after every
+change. Every transition timing decision comes from one.
+
+**Contact sheets at high contrast.** Rendering every dish into one sheet makes
+classification mistakes obvious at a glance, and boosting contrast 6–9x exposes banding,
+seams and fringing that are invisible at 1x but are exactly what reads as "computer
+generated".
+
 ## SwiftUI constraints discovered the hard way
 
 Each of these cost a build-and-look cycle, and each shaped the architecture. Worth

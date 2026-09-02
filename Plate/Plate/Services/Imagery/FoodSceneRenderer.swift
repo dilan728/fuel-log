@@ -16,7 +16,7 @@ final class FoodSceneRenderer: @unchecked Sendable {
 
     /// Bump when the shader changes: it is part of the cache key, so old renders are
     /// superseded rather than lingering next to new ones in the same catalog.
-    static let version = 8
+    static let version = 14
 
     private let logger = Logger(subsystem: "com.plate.Plate", category: "FoodScene")
     private let device: MTLDevice?

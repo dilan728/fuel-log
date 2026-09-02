@@ -146,7 +146,7 @@ struct OnboardingView: View {
                 let t = context.date.timeIntervalSince(PlateShaders.epoch)
                 ZStack {
                     plate("Pesto Pasta", at: CGPoint(x: 0.18, y: 0.20), size: 150, phase: t * 0.11)
-                    plate("Blueberry Yogurt", at: CGPoint(x: 0.86, y: 0.34), size: 116, phase: t * 0.09 + 2)
+                    plate("Raspberries", at: CGPoint(x: 0.86, y: 0.34), size: 116, phase: t * 0.09 + 2)
                     plate("Flat White", at: CGPoint(x: 0.30, y: 0.80), size: 96, phase: t * 0.13 + 4)
                 }
             }

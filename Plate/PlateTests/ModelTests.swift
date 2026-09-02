@@ -1,4 +1,6 @@
 import XCTest
+import SwiftUI
+import UIKit
 @testable import Plate
 
 final class QuantityTests: XCTestCase {
@@ -275,6 +277,56 @@ final class FoodTextureTests: XCTestCase {
             XCTAssertTrue((0...1).contains(Double(texture.subsurface)), "\(texture)")
             // The shader loops to a fixed bound; exceeding it would silently drop pieces.
             XCTAssertLessThanOrEqual(texture.pieceCount, 24, "\(texture)")
+        }
+    }
+}
+
+final class FoodPaletteTests: XCTestCase {
+
+    func testNoKeywordAppearsInTwoRows() {
+        // Two rows claiming the same word score identically, and the winner is decided
+        // by declaration order — invisible at the call site and impossible to reason
+        // about. "ramen" was in both the pale-starch row and the broth row, so a bowl of
+        // ramen rendered as a bowl of milk.
+        var seen: [String: Int] = [:]
+        for (index, keys) in FoodPalette.vocabulary.enumerated() {
+            for key in keys {
+                if let first = seen[key] {
+                    XCTFail("'\(key)' appears in palette rows \(first) and \(index)")
+                }
+                seen[key] = index
+            }
+        }
+    }
+
+    func testCommonDishesGetTheColourYouWouldExpect() {
+        // Not a colour-match test — just that the classification lands in the right
+        // family, which is what a keyword table can actually promise.
+        func isDarker(_ name: String, than other: String) -> Bool {
+            func luminance(_ food: String) -> CGFloat {
+                let resolved = UIColor(FoodPalette.forFood(food).primary)
+                    .resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
+                var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+                resolved.getRed(&r, green: &g, blue: &b, alpha: &a)
+                return 0.2126 * r + 0.7152 * g + 0.0722 * b
+            }
+            return luminance(name) < luminance(other)
+        }
+        XCTAssertTrue(isDarker("Espresso", than: "Flat White"), "milk coffee should be lighter than espresso")
+        XCTAssertTrue(isDarker("Dark Chocolate", than: "Banana"))
+    }
+
+    func testEveryDatabaseFoodClassifiesWithoutFallingOver() {
+        for record in NutritionDatabase.shared.records {
+            let recipe = FoodSceneRecipe(food: record.name)
+            XCTAssertTrue(FoodForm.allCases.contains(recipe.vessel), record.name)
+            XCTAssertTrue(FoodTexture.allCases.contains(recipe.texture), record.name)
+            // Linear-light colours, so anything at or beyond 1 would clip on tonemap.
+            for channel in [recipe.primary, recipe.secondary, recipe.base] {
+                XCTAssertTrue((0...1).contains(channel.x), record.name)
+                XCTAssertTrue((0...1).contains(channel.y), record.name)
+                XCTAssertTrue((0...1).contains(channel.z), record.name)
+            }
         }
     }
 }

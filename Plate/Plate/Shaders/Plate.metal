@@ -73,35 +73,6 @@ static float luminance(half3 c) {
     return dot(float3(c), float3(0.2126f, 0.7152f, 0.0722f));
 }
 
-// MARK: - plateGrain (colorEffect)
-//
-// Film grain over the Catalog. Two things make this read as *film* rather than as
-// TV static: the grain is luminance-dependent (shadows are grainier than highlights,
-// as with real silver halide), and it is monochrome, applied as a luminance offset
-// rather than per-channel noise.
-
-[[ stitchable ]] half4 plateGrain(float2 position,
-                                  half4 color,
-                                  float2 size,
-                                  float time,
-                                  float intensity) {
-    if (color.a < 0.001h) { return color; }
-
-    // Animate by jumping the sample lattice each frame rather than scrolling it,
-    // so the grain shimmers in place instead of appearing to drift.
-    float2 seedPos = position + float2(hash11(floor(time * 24.0f)) * 512.0f,
-                                       hash11(floor(time * 24.0f) + 7.0f) * 512.0f);
-    float n = hash12(seedPos) - 0.5f;
-
-    // Silver-halide response: peak grain in the midtones-to-shadows.
-    float lum = luminance(color.rgb / max(color.a, 0.001h));
-    float response = smoothstep(1.0f, 0.15f, lum) * 0.75f + 0.25f;
-
-    half offset = half(n * intensity * response);
-    half3 grained = clamp(color.rgb + offset * color.a, 0.0h, color.a);
-    return half4(grained, color.a);
-}
-
 // MARK: - materialize (layerEffect)
 //
 // A generated food image resolving out of noise. The reveal is not a fade: unrevealed
@@ -146,75 +117,6 @@ static float luminance(half3 c) {
     outColor += tint * half(dust);
 
     return clamp(outColor, 0.0h, 1.0h);
-}
-
-// MARK: - tokenBloom (layerEffect)
-//
-// Streaming text. Characters near the write head get a warm bloom that trails off
-// behind them and a sub-pixel upward lift, so text appears to *settle* as it arrives.
-// Applied to the whole text layer; `head` is the caret position in the same space.
-
-[[ stitchable ]] half4 tokenBloom(float2 position,
-                                  SwiftUI::Layer layer,
-                                  float2 head,
-                                  float radius,
-                                  float strength,
-                                  half4 tint) {
-    // Distance measured with a squashed metric: the bloom should reach back along the
-    // line much further than it reaches across lines.
-    float2 d = position - head;
-    float dist = length(float2(d.x * 0.42f, d.y * 1.6f));
-    float falloff = 1.0f - smoothstep(0.0f, max(radius, 1.0f), dist);
-
-    // Only trail *behind* the head (to the left / above), never ahead of it.
-    float behind = smoothstep(radius * 0.55f, -radius * 0.1f, d.x) * 0.7f + 0.3f;
-    float amount = falloff * behind * strength;
-
-    // Lift: glyphs near the head are sampled from slightly below, so they read as
-    // rising into position. Sub-pixel, deliberately — you feel it, you don't see it.
-    half4 base = layer.sample(position + float2(0.0f, amount * 1.4f));
-
-    // Cheap 4-tap bloom, only paid for where amount > 0.
-    half4 glow = 0.0h;
-    if (amount > 0.01f) {
-        const float r = 2.5f;
-        glow += layer.sample(position + float2(r, 0.0f));
-        glow += layer.sample(position + float2(-r, 0.0f));
-        glow += layer.sample(position + float2(0.0f, r));
-        glow += layer.sample(position + float2(0.0f, -r));
-        glow *= 0.25h;
-    }
-
-    half4 bloomed = base + tint * glow.a * half(amount * 0.9f);
-    return clamp(bloomed, 0.0h, 1.0h);
-}
-
-// MARK: - emberFlow (colorEffect)
-//
-// The animated fill inside the macro ring. Rather than a static stroke color, energy
-// flows around the arc — slow, low-contrast, and only visible if you look. Applied to
-// a stroked shape, so `color.a` already carries the stroke's antialiasing.
-
-[[ stitchable ]] half4 emberFlow(float2 position,
-                                 half4 color,
-                                 float2 size,
-                                 float time,
-                                 half4 warm,
-                                 half4 cool) {
-    if (color.a < 0.001h) { return color; }
-
-    float2 uv = (position - size * 0.5f) / max(size.x, 1.0f);
-    float angle = atan2(uv.y, uv.x);
-
-    // Two counter-rotating bands at incommensurate speeds — never visibly repeats.
-    float a = sin(angle * 2.0f - time * 0.55f);
-    float b = sin(angle * 3.0f + time * 0.31f + 1.7f);
-    float mixAmount = clamp((a * 0.6f + b * 0.4f) * 0.5f + 0.5f, 0.0f, 1.0f);
-
-    half3 flowed = mix(half3(cool.rgb), half3(warm.rgb), half(mixAmount));
-
-    // Preserve the incoming alpha (the stroke mask) and its premultiplication.
-    return half4(flowed * color.a, color.a);
 }
 
 // MARK: - shimmerSweep (colorEffect)
@@ -304,33 +206,12 @@ static float luminance(half3 c) {
     return half4(cr.r, cg.g, cb.b, alpha);
 }
 
-// MARK: - softVignette (colorEffect)
-//
-// Depth cue for the Catalog. Elliptical, following the aspect ratio, so it doesn't
-// look like a circle stamped on a tall screen.
-
-[[ stitchable ]] half4 softVignette(float2 position,
-                                    half4 color,
-                                    float2 size,
-                                    float strength,
-                                    float radius) {
-    float2 uv = (position / max(size, float2(1.0f))) - 0.5f;
-    // Normalize by the shorter side so the falloff is elliptical, not circular.
-    float aspect = size.x / max(size.y, 1.0f);
-    uv.x *= aspect;
-    float r = length(uv) / max(radius, 0.01f);
-
-    float v = 1.0f - smoothstep(0.55f, 1.15f, r) * strength;
-    return half4(color.rgb * half(v), color.a);
-}
-
 // MARK: - Overlay effects
 //
-// `plateGrain` and `softVignette` above are colorEffects applied *to* a view. That
-// works on ordinary content, but a shader (or a blur) applied to an ancestor of a
-// ScrollView suppresses the scroll view's content entirely — SwiftUI cannot rasterize
-// live scrolling content into the offscreen layer a shader reads from, and you get a
-// correctly-sized, completely empty scroll view.
+// A shader (or a blur) applied to an ancestor of a ScrollView suppresses the scroll
+// view's content entirely — SwiftUI cannot rasterize live scrolling content into the
+// offscreen layer a shader reads from, and the result is a correctly-sized, completely
+// empty scroll view.
 //
 // So anything that needs to sit over a scrolling surface is drawn as a transparent
 // overlay instead: these two write premultiplied colour with their own alpha onto a
@@ -349,17 +230,4 @@ static float luminance(half3 c) {
     half a = half(fabs(n) * intensity * 2.0f) * color.a;
     half3 tone = n > 0.0f ? half3(1.0h) : half3(0.0h);
     return half4(tone * a, a);
-}
-
-[[ stitchable ]] half4 vignetteOverlay(float2 position,
-                                       half4 color,
-                                       float2 size,
-                                       float strength,
-                                       float radius) {
-    float2 uv = (position / max(size, float2(1.0f))) - 0.5f;
-    uv.x *= size.x / max(size.y, 1.0f);
-    float r = length(uv) / max(radius, 0.01f);
-
-    half a = half(smoothstep(0.55f, 1.15f, r) * strength) * color.a;
-    return half4(0.0h, 0.0h, 0.0h, a);   // premultiplied black
 }

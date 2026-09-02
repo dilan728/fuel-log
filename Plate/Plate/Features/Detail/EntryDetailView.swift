@@ -23,9 +23,14 @@ struct EntryDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 if let entry {
+                    // Capped and centred rather than full width. At the medium detent a
+                    // full-width square is 354pt tall and pushes the figures and the
+                    // portion control — the two things this sheet exists for — off the
+                    // bottom of the sheet entirely.
                     FoodImageView(entry: entry, cornerRadius: Metrics.imageRadius)
                         .aspectRatio(1, contentMode: .fit)
-                        .plateMargins()
+                        .frame(maxWidth: 190)
+                        .frame(maxWidth: .infinity)
                         .padding(.top, Metrics.step)
 
                     heading(entry)
@@ -69,7 +74,8 @@ struct EntryDetailView: View {
                 Text(DayHeader.figure(scaledFacts.calories))
                     .typeStyle(.masthead)
                     .contentTransition(.numericText())
-                Text("cal").typeStyle(.micro, Palette.inkFaint)
+                    .opticalLeading(forSize: 44)
+                Text("cal").typeStyle(.unit, Palette.inkFaint)
                 Spacer(minLength: Metrics.step)
                 MacroFigures(facts: scaledFacts, spacing: Metrics.wide)
             }

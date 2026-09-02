@@ -60,4 +60,25 @@ extension View {
     func plateMargins() -> some View {
         padding(.horizontal, Metrics.margin)
     }
+
+    /// Pulls display type left by its side bearing so the *ink* aligns with the column,
+    /// not the layout box.
+    ///
+    /// Measured: at 44pt the serif figures began 2.0pt right of their frame, so the
+    /// masthead hung two points inside every rule and row beneath it. Two points is
+    /// invisible as a number and unmistakable as a wobble in a left edge.
+    func opticalLeading(forSize size: CGFloat) -> some View {
+        padding(.leading, -size * 0.045)
+    }
+
+    /// Pulls a symbol out to the margin. SF Symbols sit centred in a square frame, so a
+    /// 14pt glyph in a 32pt tap target starts nine points inside it — enough to make the
+    /// top bar look indented against a hard left column.
+    func opticalGlyphLeading(frame: CGFloat = 32, glyph: CGFloat = 14) -> some View {
+        padding(.leading, -(frame - glyph) / 2)
+    }
+
+    func opticalGlyphTrailing(frame: CGFloat = 32, glyph: CGFloat = 14) -> some View {
+        padding(.trailing, -(frame - glyph) / 2)
+    }
 }

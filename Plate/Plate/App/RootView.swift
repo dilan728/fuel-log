@@ -197,7 +197,7 @@ struct RootView: View {
                 onSend: { session.send(session.draft) },
                 onStop: { session.cancel() }
             )
-            .padding(.horizontal, Metrics.wide)
+            .padding(.horizontal, Metrics.margin)
             .padding(.bottom, Metrics.snug)
             .background(Palette.paper)
         }
@@ -213,6 +213,7 @@ struct RootView: View {
                     app.zoom > 0.5 ? "text.alignleft" : "square.grid.2x2",
                     label: app.zoom > 0.5 ? "Back to the conversation" : "See all meals"
                 ) { toggleSurface() }
+                .opticalGlyphLeading()
 
                 Spacer()
 
@@ -227,6 +228,7 @@ struct RootView: View {
                 barButton("slider.horizontal.3", label: "Settings") {
                     app.isShowingSettings = true
                 }
+                .opticalGlyphTrailing()
             }
             .plateMargins()
             .frame(height: 32)

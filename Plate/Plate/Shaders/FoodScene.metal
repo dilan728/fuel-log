@@ -260,7 +260,16 @@ static Hit mapFood(float3 p, constant FoodSceneParams &params) {
         float surfaceRadius = (params.vessel == 2) ? 0.525f : (params.vessel == 1 ? 0.70f : 0.74f);
         float height = (params.vessel == 2) ? 0.44f : (params.vessel == 1 ? 0.40f : 0.16f);
         float rise = smoothstep(surfaceRadius * 0.80f, surfaceRadius, length(p.xz)) * 0.022f;
-        float disc = sdRoundedDisc(p - float3(0.0f, height - 0.06f + rise, 0.0f), surfaceRadius, 0.06f, 0.012f);
+
+        // Ripples. A mirror-flat horizontal surface under a single directional light
+        // shows its specular at exactly one point, which from directly overhead is
+        // usually off the plate entirely — so the first version rendered every drink as
+        // a flat disc of paint. A hundredth of a unit of relief is invisible as
+        // geometry and breaks the highlight across the whole surface.
+        float ripple = (fbm3(p * 7.5f + params.seed * 2.1f, 3) - 0.5f) * 0.010f;
+
+        float disc = sdRoundedDisc(p - float3(0.0f, height - 0.06f + rise + ripple, 0.0f),
+                                   surfaceRadius, 0.06f, 0.012f);
         return Hit{ disc, 3, 0.0f };
     }
 
@@ -449,9 +458,16 @@ static float3 shade(float3 p, float3 n, float3 view, Hit hit, constant FoodScene
         roughness = 0.30f;
         specularStrength = 0.42f;
     } else if (hit.material == 3) {
-        albedo = params.foodPrimary.rgb;
-        roughness = 0.09f;
-        specularStrength = 0.90f;
+        // Liquid. Darker toward the middle where it is deepest, lighter at the meniscus
+        // where it climbs the wall and thins — the two cues that read as depth rather
+        // than as a coloured disc.
+        float radial = clamp(length(p.xz) / 0.70f, 0.0f, 1.0f);
+        albedo = mix(params.foodPrimary.rgb, params.foodSecondary.rgb, radial * radial * 0.55f);
+        // Gently, and only at the rim. A stronger lift blew pale liquids out to white
+        // once the specular was added on top.
+        albedo *= 0.89f + 0.15f * radial;
+        roughness = 0.13f;
+        specularStrength = 0.95f;
     } else if (hit.material == 4) {
         // Bread, dough, pastry — the thing the topping sits on.
         float grain = fbm3(p * 26.0f + params.seed, 3);

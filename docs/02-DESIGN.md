@@ -1,91 +1,104 @@
 # Design system
 
-## Voice
+## The idea
 
-Warm, brief, never clinical. The agent is a friend who happens to know nutrition —
-not a form. It never says "logged successfully". It says "Got it — that's a solid
-breakfast." Numbers appear because they're useful, not to score you.
+A printed page, not an app screen. Structure comes from rules, alignment and white
+space — not from cards, shadows and gradients. The photographs are the only things on
+the page with weight, and everything else gets out of their way.
 
-## Color
+Three rules that decide most arguments:
 
-Not a food app palette. No traffic-light macros, no green "good" / red "bad".
-The ground is warm paper; the accent is a single ember.
+1. **The ground is flat.** One colour, edge to edge. The first version washed the page
+   with a time-of-day gradient; measured, its margins alone held 586 distinct colours
+   spanning 40 levels. A page that cannot decide what colour it is *is* what "looks
+   generated" means.
+2. **No shadows.** Anywhere. A white rounded rectangle with a drop shadow is the most
+   generic object in mobile design, and a column of them turns a page into a feed.
+3. **Tints are opaque.** Ember at 26% over near-white has almost no contrast at small
+   sizes. Every tint is pre-blended toward the ground instead.
+
+## Measure — `Metrics`
+
+One 4pt rhythm: 2 · 4 · 8 · 12 · 16 · 24 · 32 · 48. One margin: **24pt**, used
+everywhere, so every left edge in the app agrees.
+
+`Hairline` reads `displayScale` and divides. `Divider`, and any `frame(height: 0.5)`,
+lands on a half pixel at 3× and antialiases into a grey smear; a real one-pixel rule is
+most of what separates a typeset page from a web page.
+
+Photographs are rounded **3pt**. A 20pt radius reads as a UI card; print does not round
+its images at all.
+
+Named `Metrics` and not `Layout` because SwiftUI already has a `Layout` protocol, and
+shadowing it silently breaks any custom layout in the module.
+
+## Colour — `Palette`
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| `paper` | `#FBF8F4` | `#0D0C0B` | app ground |
-| `paperRaised` | `#FFFFFF` | `#171614` | cards |
-| `ink` | `#17151199` | `#F5F1EA` | primary text |
-| `inkSoft` | 62% ink | 58% ink | secondary text |
-| `inkFaint` | 34% ink | 32% ink | captions, axis |
-| `ember` | `#E2542B` | `#FF6B3D` | the one accent |
-| `emberSoft` | ember @ 12% | ember @ 16% | fills, chips |
-| `hairline` | ink @ 8% | ink @ 10% | 0.5pt rules |
+| `paper` | `#FAF7F2` | `#0C0B0A` | the page, flat |
+| `paperSunken` | `#F0EAE1` | `#171513` | the well an image sits in |
+| `ink` | `#14120F` | `#F6F2EB` | text |
+| `hairline` | ink @ 13% | ink @ 13% | one-pixel rules |
+| `ember` | `#C8451F` | `#FF6B3D` | the one accent |
 
-Macros are distinguished by **weight and position in the ring**, not hue:
-protein = ember, carbs = ember @ 55%, fat = ember @ 28%. One family, three densities.
-This is the single most important palette decision in the app — it keeps a screen
-full of food photography from turning into a christmas tree.
+**Macros are separated by density, not hue** — protein is ember, carbs and fat are the
+same ember pre-blended toward the ground. A screen full of food photography already has
+all the colour it can handle; traffic-light macro chips would turn the catalog into a
+christmas tree.
 
-## Type
+## Type — `TypeStyle`
 
-System serif for numbers and food names (`.system(.title, design: .serif)`), system
-sans for everything else. The serif is what makes it read as a magazine rather than
-a dashboard.
+Serif for content — food names, figures, dates. Sans for chrome — labels, buttons,
+captions. That split is most of what makes the app read as a page.
 
-| Role | Spec |
-|---|---|
-| `display` | serif, 44pt, weight .regular, tracking -1.2 — the day's calorie number |
-| `title` | serif, 24pt, .regular, tracking -0.4 — food names, catalog headers |
-| `body` | sans, 16pt, .regular, line spacing 5 — chat |
-| `label` | sans, 13pt, .medium, tracking 0.2 |
-| `caption` | sans, 11pt, .medium, tracking 0.6, uppercase — macro labels, dates |
+**Every style carries its own tracking**, because the right value is a function of size
+and it is the control most often left at zero: `masthead` is pulled in 1.4pt, `micro` is
+opened out 0.85pt. Units get their own lowercase style — "164 CAL" shouts over the
+figure it belongs to.
 
-## Motion
+Display type is also pulled left by its side bearing (`opticalLeading`). Measured, 44pt
+serif figures began 2.0pt right of their frame, so the masthead hung two points inside
+every rule beneath it. Two points is invisible as a number and unmistakable as a wobble
+in a left edge.
 
-Three springs, used everywhere, defined once in `Motion.swift`:
+## Motion — `Motion`
 
-| Name | Response | Damping | For |
-|---|---|---|---|
-| `.snap` | 0.32 | 0.86 | taps, toggles, chips |
-| `.glide` | 0.55 | 0.88 | page transitions, sheet presentation |
-| `.bounce` | 0.48 | 0.62 | arrival of a new food card, ring fills |
+Three springs — `snap` (0.32/0.86), `glide` (0.55/0.88), `bounce` (0.48/0.62) — plus
+`drift` for ambient movement. Nothing cross-fades; things move, scale and blur.
 
-Rule: nothing cross-fades. Things move, scale, and blur into place. Any transition
-that can be `matchedGeometryEffect` is one.
+`Curve.smoothstep` is the workhorse for transitions. A linear crossfade leaves both
+layers at half strength in the middle and the screen reads as a smear.
 
-## Signature interactions
+## The signature interaction
 
-1. **Pinch to zoom out** (Thread → Catalog). Continuous and reversible — the chat
-   bubbles scale down and blur out while the meal cards they contain fly into the
-   catalog grid via `matchedGeometryEffect`. Driven by a live `MagnifyGesture`, not
-   a tap. Rubber-bands past the endpoints.
-2. **Day paging.** Horizontal drag, with the *header* (date + ring) moving at 0.6×
-   the content's parallax and the background gradient shifting hue by time-of-day.
-3. **Materialize.** A newly generated food image doesn't fade in — it resolves out
-   of drifting noise via the `materialize` shader, over 900 ms, ember-tinted.
-4. **Token bloom.** Streaming text has a soft ember glow on the leading ~8 characters
-   that trails off behind the cursor (`tokenBloom` layer effect).
+Pinch to move between the Thread and the Catalog. It is a scrubbable value, not a canned
+animation — push halfway, change your mind, come back.
 
-## Shader inventory (`Plate.metal`)
+The departing surface is captured as a **still** and warped away, while the arriving
+surface animates in live. This is forced by a SwiftUI constraint (see `05-PROGRESS.md`)
+and is also the faster arrangement: one texture instead of a re-rendered scrolling
+hierarchy every frame.
 
-| Function | Kind | Where |
-|---|---|---|
-| `plateGrain` | colorEffect | full-screen film grain over the Catalog |
-| `materialize` | layerEffect | food image reveal from noise |
-| `tokenBloom` | layerEffect | streaming text leading-edge glow |
-| `liquidGlass` | layerEffect | refraction + specular on floating bars |
-| `emberFlow` | colorEffect | animated gradient inside the macro ring |
-| `shimmerSweep` | colorEffect | placeholder card while an image generates |
-| `warpZoom` | distortionEffect | barrel warp during the pinch transition |
-| `softVignette` | colorEffect | catalog depth cue |
+Its timing was tuned against filmstrips, not by feel:
 
-All are gated behind `Motion.reduceMotion`; when Reduce Motion is on, time-varying
-shaders are evaluated at a fixed `t` (still pretty, just static).
+- The still **holds** before it drops; the catalog is fully present well before it goes.
+- The lens warp **peaks at the midpoint**, not the end, where the layer carrying it is
+  already invisible.
+- The warp always bends **inward**, so the shader never samples past its own layer.
+- Chromatic aberration is cubed in radius and gated on the blur, so it is nil across the
+  central two thirds and appears only at the corners of an already-soft frame. Coloured
+  fringes on 10pt letterforms read as a rendering fault however subtle they are.
+
+## Shaders
+
+Four in the interface — `materialize` (an image resolving out of scattered noise),
+`shimmerSweep`, `pinchWarp`, `grainOverlay` — and two compute kernels for the food
+renderer. Anything unreachable is deleted: `ShaderLibrary` resolves by name at runtime,
+so a wrapper left behind after its shader is gone still compiles and fails silently.
 
 ## Accessibility
 
-- Every macro value has an `accessibilityLabel` spelling out the unit.
-- Ring and catalog tiles support Dynamic Type up to XXL before truncating.
-- Reduce Motion: pinch transition becomes a 200 ms scale+opacity; no parallax.
-- Reduce Transparency: glass surfaces fall back to `paperRaised` + hairline.
+Reduce Motion freezes time-based shaders at a flattering frame and drops the chromatic
+split. Reduce Transparency replaces materials with `paperRaised` and a hairline. Every
+figure has a spelled-out accessibility label.

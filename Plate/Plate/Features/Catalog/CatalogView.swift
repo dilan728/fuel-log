@@ -157,6 +157,7 @@ private struct CatalogDayHeader: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(day.title)
                     .typeStyle(.title)
+                    .opticalLeading(forSize: 22)
                 Spacer(minLength: Metrics.step)
                 Text("\(DayHeader.figure(totals.calories)) cal")
                     .typeStyle(.micro, Palette.inkFaint)

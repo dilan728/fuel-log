@@ -76,7 +76,8 @@ enum FoodTexture: String, Sendable, CaseIterable {
                    "cocktail", "margarita", "mojito", "lemonade", "milk", "whiskey",
                    "vodka", "gin", "soup", "broth", "chowder", "gravy", "yogurt",
                    "yoghurt", "greek yogurt", "pudding", "custard", "honey", "syrup",
-                   "oil", "sauce", "ketchup", "mayonnaise", "hummus", "dressing", "salsa"]),
+                   "oil", "sauce", "ketchup", "mayonnaise", "hummus", "dressing", "salsa",
+                   "ramen", "pho", "udon", "noodle soup", "congee", "porridge", "dal"]),
         (.grains, ["rice", "quinoa", "couscous", "oatmeal", "porridge", "oats", "granola",
                    "muesli", "cereal", "peas", "corn", "beans", "lentils", "chickpeas",
                    "edamame", "nuts", "almonds", "peanuts", "cashews", "walnuts",
@@ -120,8 +121,15 @@ struct FoodSceneRecipe: Hashable, Sendable {
         let palette = FoodPalette.forFood(name)
         // Always resolved light. A photograph does not change when the app theme does,
         // and the render is cached once for both appearances.
-        self.primary = Self.renderable(palette.primary)
-        self.secondary = Self.renderable(palette.secondary)
+        // Drinks keep more of their chroma and are allowed to go darker. On a solid the
+        // colour is a detail; on an espresso it is the entire subject, and the general
+        // desaturation turned one into a beige disc.
+        let keepChroma: Float = texture == .liquid ? 0.94 : 0.80
+        let floor_: Float = texture == .liquid ? 0.006 : 0.020
+        // A flavoured dairy drink is a pale version of whatever flavours it.
+        let creamed = Self.creamAmount(for: name)
+        self.primary = Self.renderable(palette.primary, keepChroma: keepChroma, floor_: floor_, cream: creamed)
+        self.secondary = Self.renderable(palette.secondary, keepChroma: keepChroma, floor_: floor_, cream: creamed * 0.7)
         self.ground = Self.renderable(FoodPalette.studioGround)
         self.base = Self.renderable(FoodPalette.breadBase)
     }
@@ -132,7 +140,32 @@ struct FoodSceneRecipe: Hashable, Sendable {
     /// a filmic tonemap, those same values come out lurid — the first render had a
     /// highlighter-green avocado and a fire-engine tomato. Real food occupies a narrow,
     /// unsaturated band.
-    private static func renderable(_ color: Color) -> SIMD4<Float> {
+    /// How far a drink's colour should be pulled toward cream.
+    ///
+    /// Only for things whose palette colour comes from a *flavouring* rather than from
+    /// the drink itself: blueberry yogurt is lilac, not the colour of a blueberry. A flat
+    /// white already has the right milky-coffee colour in the palette, and creaming it
+    /// too turned every drink in the catalog into the same pale grey disc.
+    private static func creamAmount(for name: String) -> Float {
+        let context = KeywordMatch.Context(name)
+        func matches(_ words: [String]) -> Bool {
+            words.contains { KeywordMatch.score($0, in: context) != nil }
+        }
+        if matches(["yogurt", "yoghurt", "milkshake", "ice cream", "gelato", "custard", "pudding"]) {
+            // Enough to read as dairy, not so much that the flavour disappears — at 0.55
+            // a blueberry yogurt came out as a blank white disc.
+            return 0.42
+        }
+        if matches(["smoothie", "shake", "porridge", "oatmeal", "congee"]) { return 0.22 }
+        return 0
+    }
+
+    private static func renderable(
+        _ color: Color,
+        keepChroma: Float = 0.80,
+        floor_: Float = 0.020,
+        cream: Float = 0
+    ) -> SIMD4<Float> {
         let resolved = UIColor(color).resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
         var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
         resolved.getRed(&r, green: &g, blue: &b, alpha: &a)
@@ -144,8 +177,11 @@ struct FoodSceneRecipe: Hashable, Sendable {
         var rgb = SIMD3(toLinear(r), toLinear(g), toLinear(b))
 
         let luminance = dot(rgb, SIMD3<Float>(0.2126, 0.7152, 0.0722))
-        rgb = simd_mix(SIMD3(repeating: luminance), rgb, SIMD3<Float>(repeating: 0.80))
-        rgb = simd_clamp(rgb, SIMD3(repeating: 0.020), SIMD3(repeating: 0.82))
+        rgb = simd_mix(SIMD3(repeating: luminance), rgb, SIMD3<Float>(repeating: keepChroma))
+        rgb = simd_clamp(rgb, SIMD3(repeating: floor_), SIMD3(repeating: 0.82))
+        if cream > 0 {
+            rgb = simd_mix(rgb, SIMD3<Float>(0.80, 0.76, 0.70), SIMD3(repeating: cream))
+        }
 
         return SIMD4(rgb.x, rgb.y, rgb.z, 1)
     }

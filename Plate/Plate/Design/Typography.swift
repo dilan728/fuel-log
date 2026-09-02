@@ -27,6 +27,10 @@ enum TypeStyle {
     /// Lower-case units sitting beside a figure. Separate from `.micro` because a unit
     /// set in caps competes with the number it belongs to.
     case unit
+    /// Explanatory small print. Its own style rather than a cased-down `.micro`, because
+    /// `textCase` is an environment value and the closest modifier to the `Text` wins —
+    /// so overriding it from outside silently fails and a whole paragraph sets in caps.
+    case note
     /// Figures inside dense contexts. Tabular, so columns of numbers align and animated
     /// values do not jitter.
     case numeric
@@ -43,6 +47,7 @@ enum TypeStyle {
         case .label:         return .system(size: 13, weight: .medium)
         case .micro:         return .system(size: 10.5, weight: .semibold)
         case .unit:          return .system(size: 11, weight: .medium)
+        case .note:          return .system(size: 12, weight: .regular)
         case .numeric:       return .system(size: 14, weight: .medium).monospacedDigit()
         case .numericLarge:  return .system(size: 19, weight: .regular, design: .serif).monospacedDigit()
         }
@@ -60,6 +65,7 @@ enum TypeStyle {
         case .label:         return 0
         case .micro:         return 0.85
         case .unit:          return 0.1
+        case .note:          return 0
         case .numeric:       return 0
         case .numericLarge:  return -0.2
         }
@@ -68,6 +74,7 @@ enum TypeStyle {
     var lineSpacing: CGFloat {
         switch self {
         case .body:  return 5
+        case .note:  return 3
         case .title: return 2
         default:     return 0
         }

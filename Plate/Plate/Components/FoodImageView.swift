@@ -8,6 +8,10 @@ import SwiftUI
 struct FoodImageView: View {
     let entry: FoodEntry
     var cornerRadius: CGFloat = 4
+    /// How far into the plate to crop. 1 shows the whole composition, which is right at
+    /// catalog size; a 52pt thumbnail of an overhead white plate on a pale backdrop is
+    /// almost entirely empty plate, so rows crop in on the food itself.
+    var zoom: CGFloat = 1
 
     @State private var photograph: UIImage?
     @State private var reveal: Double = 0
@@ -33,6 +37,7 @@ struct FoodImageView: View {
                 Image(uiImage: photograph)
                     .resizable()
                     .scaledToFill()
+                    .scaleEffect(zoom)
                     .plateMaterialize(
                         progress: reveal,
                         seed: entry.imageSeed,

@@ -34,6 +34,7 @@ struct DayHeader: View {
                     .monospacedDigit()
                     .foregroundStyle(Palette.ink)
                     .contentTransition(.numericText())
+                    .opticalLeading(forSize: 44 - 18 * eased)
 
                 if let target {
                     Text("of \(Self.figure(target))")

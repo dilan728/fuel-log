@@ -53,10 +53,10 @@ struct FoodRow: View {
     @ViewBuilder
     private var image: some View {
         if let namespace {
-            FoodImageView(entry: entry, cornerRadius: Metrics.imageRadius)
+            FoodImageView(entry: entry, cornerRadius: Metrics.imageRadius, zoom: 1.55)
                 .matchedGeometryEffect(id: entry.id, in: namespace)
         } else {
-            FoodImageView(entry: entry, cornerRadius: Metrics.imageRadius)
+            FoodImageView(entry: entry, cornerRadius: Metrics.imageRadius, zoom: 1.55)
         }
     }
 }

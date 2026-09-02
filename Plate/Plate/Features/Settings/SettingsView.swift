@@ -198,9 +198,7 @@ private struct SettingsSection<Content: View>: View {
 
             if let note {
                 Text(note)
-                    .typeStyle(.micro, Palette.inkFaint)
-                    .textCase(nil)
-                    .lineSpacing(3)
+                    .typeStyle(.note, Palette.inkFaint)
                     .plateMargins()
                     .padding(.top, Metrics.step)
                     .fixedSize(horizontal: false, vertical: true)
