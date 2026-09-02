@@ -1,2 +1,9 @@
 PM Dashboard.html
 index.html
+
+# Xcode
+*.xcuserdatad/
+xcuserdata/
+DerivedData/
+.DS_Store
+build/
