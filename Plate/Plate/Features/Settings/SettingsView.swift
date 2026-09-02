@@ -2,32 +2,33 @@ import SwiftUI
 
 /// Settings.
 ///
-/// The framing matters here: Plate works with nothing configured, so this screen is
-/// about *upgrading* the app rather than about making it function. Nothing is marked
-/// as missing or required, and the copy says what each key adds rather than what its
-/// absence breaks.
+/// Framed as *upgrading* the app rather than as making it work — Plate is complete with
+/// nothing configured, so nothing here is marked missing or required, and each row says
+/// what a key adds rather than what its absence breaks.
+///
+/// Set as a ruled list rather than as grouped cards: the same structure, none of the
+/// furniture.
 struct SettingsView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
 
-    @State private var name: String = ""
-    @State private var calorieTarget: String = ""
-    @State private var proteinTarget: String = ""
-    @State private var context: String = ""
+    @State private var name = ""
+    @State private var calorieTarget = ""
+    @State private var proteinTarget = ""
+    @State private var context = ""
     @State private var cacheSize: Int64 = 0
-    @State private var isBackfilling = false
+    @State private var isWorking = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 22) {
+                VStack(alignment: .leading, spacing: Metrics.generous) {
                     connections
                     you
-                    photography
+                    imagery
                     about
                 }
-                .padding(.horizontal, 18)
-                .padding(.vertical, 12)
+                .padding(.vertical, Metrics.wide)
             }
             .background(Palette.paper)
             .navigationTitle("Settings")
@@ -35,7 +36,7 @@ struct SettingsView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { save(); dismiss() }
-                        .foregroundStyle(Palette.ember)
+                        .typeStyle(.label, Palette.ember)
                 }
             }
         }
@@ -45,110 +46,105 @@ struct SettingsView: View {
     // MARK: Sections
 
     private var connections: some View {
-        Section(
+        SettingsSection(
             "Connections",
-            note: "Plate works without any of these. Adding one upgrades that part of the app; keys are kept in the Keychain and only ever sent to the service they belong to."
+            note: "Plate works without any of these. Adding one upgrades that part of the app. Keys are kept in the Keychain and only ever sent to the service they belong to."
         ) {
-            VStack(spacing: 0) {
-                ForEach(Array(CredentialKey.allCases.enumerated()), id: \.element) { index, key in
-                    if index > 0 { Divider().overlay(Palette.hairline) }
-                    KeyField(key: key)
-                }
+            ForEach(Array(CredentialKey.allCases.enumerated()), id: \.element) { index, key in
+                if index > 0 { Hairline(inset: Metrics.margin) }
+                KeyRow(key: key)
             }
         }
     }
 
     private var you: some View {
-        Section("You", note: "All optional. Targets turn the ring into a goal; leave them empty and it shows composition only.") {
-            VStack(spacing: 0) {
-                LabeledField(label: "Name", placeholder: "What to call you", text: $name)
-                Divider().overlay(Palette.hairline)
-                LabeledField(label: "Calories", placeholder: "No target", text: $calorieTarget, keyboard: .numberPad)
-                Divider().overlay(Palette.hairline)
-                LabeledField(label: "Protein", placeholder: "No target", text: $proteinTarget, keyboard: .numberPad)
-                Divider().overlay(Palette.hairline)
-                LabeledField(
-                    label: "Notes",
-                    placeholder: "Vegetarian, training for a half…",
-                    text: $context,
-                    axis: .vertical
-                )
-            }
+        SettingsSection(
+            "You",
+            note: "All optional. A target turns the measure into a goal; leave it empty and it shows composition only."
+        ) {
+            SettingsField(label: "Name", placeholder: "What to call you", text: $name)
+            Hairline(inset: Metrics.margin)
+            SettingsField(label: "Calories", placeholder: "No target", text: $calorieTarget, keyboard: .numberPad)
+            Hairline(inset: Metrics.margin)
+            SettingsField(label: "Protein", placeholder: "No target", text: $proteinTarget, keyboard: .numberPad)
+            Hairline(inset: Metrics.margin)
+            SettingsField(label: "Notes", placeholder: "Vegetarian, training for a half…", text: $context, axis: .vertical)
         }
     }
 
-    private var photography: some View {
-        Section("Photography", note: "Images are cached by food, so each dish is generated once and reused everywhere it appears.") {
-            VStack(spacing: 0) {
-                HStack {
-                    Text("Cached images").font(.plateBody).foregroundStyle(Palette.ink)
-                    Spacer()
-                    Text(ByteCountFormatter.string(fromByteCount: cacheSize, countStyle: .file))
-                        .font(.plateNumeric)
-                        .foregroundStyle(Palette.inkFaint)
-                }
-                .padding(14)
-
-                Divider().overlay(Palette.hairline)
-                Button {
-                        isBackfilling = true
-                        Task {
-                            await app.backfillImages()
-                            isBackfilling = false
-                            cacheSize = ImageCache.shared.diskUsage()
-                        }
-                    } label: {
-                        HStack {
-                            Text(isBackfilling
-                                 ? "Working…"
-                                 : (FoodImageService.shared.isConfigured
-                                    ? "Photograph past meals"
-                                    : "Render past meals"))
-                            Spacer()
-                            if isBackfilling { ProgressView().controlSize(.small) }
-                        }
-                        .font(.plateBody)
-                        .foregroundStyle(Palette.ember)
-                        .padding(14)
-                    }
-                    .disabled(isBackfilling)
-
-                Divider().overlay(Palette.hairline)
-                Button {
-                    ImageCache.shared.removeAll()
-                    cacheSize = 0
-                    Haptics.shared.select()
-                } label: {
-                    HStack {
-                        Text("Clear cached images")
-                        Spacer()
-                    }
-                    .font(.plateBody)
-                    .foregroundStyle(Palette.alert)
-                    .padding(14)
-                }
+    private var imagery: some View {
+        SettingsSection(
+            "Pictures",
+            note: "Images are cached by food, so each dish is made once and reused everywhere it appears."
+        ) {
+            HStack {
+                Text("Cached").typeStyle(.body)
+                Spacer()
+                Text(ByteCountFormatter.string(fromByteCount: cacheSize, countStyle: .file))
+                    .typeStyle(.numeric, Palette.inkFaint)
             }
+            .plateMargins()
+            .padding(.vertical, Metrics.wide)
+
+            Hairline(inset: Metrics.margin)
+            Button {
+                isWorking = true
+                Task {
+                    await app.backfillImages()
+                    isWorking = false
+                    cacheSize = ImageCache.shared.diskUsage()
+                }
+            } label: {
+                settingsAction(
+                    isWorking ? "Working…" : (FoodImageService.shared.isConfigured
+                                              ? "Photograph past meals"
+                                              : "Render past meals"),
+                    tint: Palette.ember,
+                    showsSpinner: isWorking
+                )
+            }
+            .buttonStyle(RowPressStyle())
+            .disabled(isWorking)
+
+            Hairline(inset: Metrics.margin)
+            Button {
+                ImageCache.shared.removeAll()
+                cacheSize = 0
+                Haptics.shared.select()
+            } label: {
+                settingsAction("Clear cached pictures", tint: Palette.alert)
+            }
+            .buttonStyle(RowPressStyle())
         }
+    }
+
+    private func settingsAction(_ title: String, tint: Color, showsSpinner: Bool = false) -> some View {
+        HStack {
+            Text(title).typeStyle(.body, tint)
+            Spacer()
+            if showsSpinner { ProgressView().controlSize(.small) }
+        }
+        .plateMargins()
+        .padding(.vertical, Metrics.wide)
+        .contentShape(Rectangle())
     }
 
     private var about: some View {
-        VStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: Metrics.tight) {
+            Hairline()
             Text("Plate")
-                .font(.plateTitleSmall)
-                .foregroundStyle(Palette.inkSoft)
-            Text(agentDescription)
-                .font(.plateCaption)
-                .foregroundStyle(Palette.inkFaint)
-                .multilineTextAlignment(.center)
+                .typeStyle(.subtitle, Palette.inkSoft)
+                .padding(.top, Metrics.wide)
+            Text(credits)
+                .typeStyle(.micro, Palette.inkFaint)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 8)
+        .plateMargins()
     }
 
-    private var agentDescription: String {
+    private var credits: String {
         let brain = Credentials.has(.anthropic) ? "Claude" : "on-device parsing"
-        let eyes = FoodImageService.shared.provider?.displayName ?? "procedural rendering"
-        return "Conversation by \(brain) · Imagery by \(eyes)"
+        let eyes = FoodImageService.shared.provider?.displayName ?? "on-device rendering"
+        return "Conversation by \(brain) · Pictures by \(eyes)"
     }
 
     // MARK: Data
@@ -178,7 +174,7 @@ struct SettingsView: View {
 
 // MARK: - Pieces
 
-private struct Section<Content: View>: View {
+private struct SettingsSection<Content: View>: View {
     let title: String
     var note: String?
     @ViewBuilder var content: Content
@@ -190,32 +186,30 @@ private struct Section<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title).plateCaptionStyle()
-                .padding(.leading, 4)
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title)
+                .typeStyle(.micro, Palette.inkFaint)
+                .plateMargins()
+                .padding(.bottom, Metrics.snug)
 
+            Hairline()
             content
-                .background {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(Palette.paperRaised)
-                }
-                .overlay {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(Palette.hairline, lineWidth: 0.5)
-                }
+            Hairline()
 
             if let note {
                 Text(note)
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(Palette.inkFaint)
-                    .padding(.horizontal, 4)
+                    .typeStyle(.micro, Palette.inkFaint)
+                    .textCase(nil)
+                    .lineSpacing(3)
+                    .plateMargins()
+                    .padding(.top, Metrics.step)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
 }
 
-private struct LabeledField: View {
+private struct SettingsField: View {
     let label: String
     let placeholder: String
     @Binding var text: String
@@ -223,26 +217,25 @@ private struct LabeledField: View {
     var axis: Axis = .horizontal
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: Metrics.step) {
             Text(label)
-                .font(.plateBody)
-                .foregroundStyle(Palette.ink)
-                .frame(width: 74, alignment: .leading)
+                .typeStyle(.body)
+                .frame(width: 76, alignment: .leading)
 
             TextField(placeholder, text: $text, axis: axis)
-                .font(.plateBody)
-                .foregroundStyle(Palette.ink)
+                .typeStyle(.body)
                 .tint(Palette.ember)
                 .keyboardType(keyboard)
                 .multilineTextAlignment(axis == .horizontal ? .trailing : .leading)
                 .lineLimit(axis == .vertical ? 1...4 : 1...1)
         }
-        .padding(14)
+        .plateMargins()
+        .padding(.vertical, Metrics.wide)
     }
 }
 
 /// One API key. Shows a redacted form once set, and never re-displays the secret.
-private struct KeyField: View {
+private struct KeyRow: View {
     let key: CredentialKey
 
     @State private var isEditing = false
@@ -250,22 +243,18 @@ private struct KeyField: View {
     @State private var stored: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
+        VStack(alignment: .leading, spacing: Metrics.step) {
+            HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(key.displayName)
-                        .font(.plateBody)
-                        .foregroundStyle(Palette.ink)
-                    Text(key.purpose)
-                        .font(.plateCaption)
-                        .foregroundStyle(Palette.inkFaint)
+                    Text(key.displayName).typeStyle(.body)
+                    Text(key.purpose).typeStyle(.micro, Palette.inkFaint)
                 }
 
-                Spacer()
+                Spacer(minLength: Metrics.step)
 
                 if let stored, !isEditing {
                     Text(stored)
-                        .font(.system(size: 12, design: .monospaced))
+                        .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(Palette.inkFaint)
                 }
 
@@ -284,24 +273,24 @@ private struct KeyField: View {
                         withAnimation(Motion.snap) { isEditing = true }
                     }
                 }
-                .font(.plateLabel)
-                .foregroundStyle(stored != nil && !isEditing ? Palette.alert : Palette.ember)
+                .typeStyle(.micro, stored != nil && !isEditing ? Palette.alert : Palette.ember)
             }
 
             if isEditing {
                 SecureField("Paste key", text: $entry)
-                    .font(.system(size: 13, design: .monospaced))
+                    .font(.system(size: 12, design: .monospaced))
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-                    .padding(10)
+                    .padding(Metrics.step)
                     .background {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(Palette.inkGhost.opacity(0.3))
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Palette.inkGhost.opacity(0.4))
                     }
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .padding(14)
+        .plateMargins()
+        .padding(.vertical, Metrics.wide)
         .task { refresh() }
     }
 
@@ -310,7 +299,5 @@ private struct KeyField: View {
         return stored == nil ? "Add" : "Remove"
     }
 
-    private func refresh() {
-        stored = Credentials.redacted(for: key)
-    }
+    private func refresh() { stored = Credentials.redacted(for: key) }
 }

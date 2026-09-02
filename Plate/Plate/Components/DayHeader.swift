@@ -1,103 +1,73 @@
 import SwiftUI
 
-/// The day's masthead: date, energy, ring.
+/// The day's masthead.
 ///
-/// Collapses as the thread scrolls — not by fading, which would leave a ghost over the
-/// content, but by shrinking the number and pulling the ring in until only a compact
-/// bar remains. `collapse` is 0…1 and is driven by scroll offset.
+/// Three lines and a rule: what day it is and what it was made of, the figure, and the
+/// measure. The measure is full-column width, so it doubles as the header's dividing
+/// rule — one element doing two jobs, which is why the header needs no separate border.
+///
+/// `collapse` runs 0…1 from scroll offset. The figure interpolates rather than switching
+/// between two sizes, because a font that jumps a step mid-scroll is more distracting
+/// than one that never moved.
 struct DayHeader: View {
     let day: DayID
     let facts: NutritionFacts
     let target: Double?
     var collapse: Double = 0
-    var onTapRing: () -> Void = {}
 
     private var eased: Double { Curve.easeInOut(collapse) }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 16) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(day.title)
-                    .plateCaptionStyle(Palette.inkFaint)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(dateLine)
+                    .typeStyle(.micro, Palette.inkFaint)
+                Spacer(minLength: Metrics.step)
+                MacroFigures(facts: facts)
+                    .opacity(1 - eased * 0.55)
+            }
 
-                HStack(alignment: .firstTextBaseline, spacing: 5) {
-                    Text(calorieText)
-                        .font(.system(
-                            size: 44 - 20 * eased,
-                            weight: .regular,
-                            design: .serif
-                        ))
-                        .foregroundStyle(Palette.ink)
-                        .monospacedDigit()
-                        .contentTransition(.numericText())
+            HStack(alignment: .firstTextBaseline, spacing: 7) {
+                Text(energyText)
+                    .font(.system(size: 44 - 18 * eased, weight: .regular, design: .serif))
+                    .tracking(-1.4 + 0.7 * eased)
+                    .monospacedDigit()
+                    .foregroundStyle(Palette.ink)
+                    .contentTransition(.numericText())
 
-                    Text(target == nil ? "cal" : "of \(Int(target ?? 0))")
-                        .font(.plateCaption)
-                        .tracking(0.6)
-                        .foregroundStyle(Palette.inkFaint)
-                        .opacity(1 - eased * 0.5)
+                if let target {
+                    Text("of \(Self.figure(target))")
+                        .typeStyle(.micro, Palette.inkFaint)
+                } else {
+                    Text("cal")
+                        .typeStyle(.micro, Palette.inkFaint)
                 }
-            }
 
-            Spacer(minLength: 8)
-
-            Button(action: onTapRing) {
-                MacroRing(facts: facts, target: target, lineWidth: 7 - 1.5 * eased)
-                    .frame(width: 58 - 16 * eased, height: 58 - 16 * eased)
+                Spacer(minLength: 0)
             }
-            .buttonStyle(.plain)
+            .padding(.top, Metrics.snug - 4 * eased)
+            .padding(.bottom, Metrics.step - 4 * eased)
+
+            EnergyRule(facts: facts, target: target)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 44)
-        .padding(.bottom, 10 - 4 * eased)
+        .plateMargins()
+        .padding(.top, Metrics.vast - 6 * eased)
+        .padding(.bottom, Metrics.step)
     }
 
-    private var calorieText: String {
+    private var dateLine: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEE d MMM"
+        let stamp = formatter.string(from: day.date())
+        return day.isToday || day.isYesterday ? "\(day.title) · \(stamp)" : stamp
+    }
+
+    private var energyText: String { Self.figure(facts.calories) }
+
+    static func figure(_ value: Double) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
         formatter.maximumFractionDigits = 0
-        return formatter.string(from: NSNumber(value: facts.calories.rounded())) ?? "0"
-    }
-}
-
-/// The three macros spelled out. Shown under the header when there is room, and in the
-/// entry detail sheet.
-struct MacroLegend: View {
-    let facts: NutritionFacts
-    var proteinTarget: Double?
-
-    var body: some View {
-        HStack(spacing: 18) {
-            item("Protein", facts.protein, Palette.protein, target: proteinTarget)
-            item("Carbs", facts.carbs, Palette.carbs, target: nil)
-            item("Fat", facts.fat, Palette.fat, target: nil)
-            if let fiber = facts.fiber, fiber > 0.5 {
-                item("Fibre", fiber, Palette.inkFaint, target: nil)
-            }
-        }
-    }
-
-    private func item(_ name: String, _ grams: Double, _ color: Color, target: Double?) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 5) {
-                Circle().fill(color).frame(width: 5, height: 5)
-                Text(name).plateCaptionStyle(Palette.inkFaint)
-            }
-            HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text("\(Int(grams.rounded()))")
-                    .font(.plateNumeric)
-                    .foregroundStyle(Palette.ink)
-                Text("g")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(Palette.inkFaint)
-                if let target, target > 0 {
-                    Text("/ \(Int(target))")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(Palette.inkFaint)
-                }
-            }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(name) \(Int(grams.rounded())) grams")
+        return formatter.string(from: NSNumber(value: value.rounded())) ?? "0"
     }
 }

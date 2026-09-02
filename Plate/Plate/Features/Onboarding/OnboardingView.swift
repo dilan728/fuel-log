@@ -42,8 +42,8 @@ struct OnboardingView: View {
 
                 controls
             }
-            .padding(.horizontal, 32)
-            .padding(.bottom, 34)
+            .plateMargins()
+            .padding(.bottom, Metrics.generous)
         }
         .plateAnimation(Motion.glide, value: step)
     }
@@ -53,21 +53,19 @@ struct OnboardingView: View {
     private var welcome: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Plate")
-                .font(.system(size: 56, weight: .regular, design: .serif))
+                .font(.system(size: 60, weight: .regular, design: .serif))
+                .tracking(-2)
                 .foregroundStyle(Palette.ink)
 
             Text("A food journal you talk to.\nTell it what you ate; it does the rest.")
-                .font(.plateBody)
+                .typeStyle(.body, Palette.inkSoft)
                 .lineSpacing(6)
-                .foregroundStyle(Palette.inkSoft)
         }
     }
 
     private var nameStep: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("What should I call you?")
-                .font(.plateTitle)
-                .foregroundStyle(Palette.ink)
+            Text("What should I call you?").typeStyle(.title)
 
             TextField("Your name", text: $name)
                 .font(.system(size: 28, weight: .regular, design: .serif))
@@ -87,13 +85,10 @@ struct OnboardingView: View {
 
     private var targetStep: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("Aiming for a daily number?")
-                .font(.plateTitle)
-                .foregroundStyle(Palette.ink)
+            Text("Aiming for a daily number?").typeStyle(.title)
 
-            Text("This turns the ring into a goal. You can skip it — plenty of people just want the record.")
-                .font(.plateBody)
-                .foregroundStyle(Palette.inkSoft)
+            Text("This turns the measure into a goal. You can skip it — plenty of people just want the record.")
+                .typeStyle(.body, Palette.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
 
             FlowRow(spacing: 8) {
@@ -103,19 +98,12 @@ struct OnboardingView: View {
                         Haptics.shared.select()
                         withAnimation(Motion.snap) { target = value }
                     } label: {
-                        Text(value.map { "\(Int($0))" } ?? "No target")
-                            .font(.plateLabel)
-                            .foregroundStyle(isSelected ? Color.white : Palette.inkSoft)
-                            .padding(.horizontal, 15)
-                            .padding(.vertical, 10)
+                        Text(value.map { DayHeader.figure($0) } ?? "No target")
+                            .typeStyle(.label, isSelected ? Color.white : Palette.inkSoft)
+                            .padding(.horizontal, Metrics.wide)
+                            .padding(.vertical, Metrics.step)
                             .background {
-                                Capsule().fill(isSelected ? Palette.ember : Palette.paperRaised)
-                            }
-                            .overlay {
-                                Capsule().strokeBorder(
-                                    isSelected ? .clear : Palette.hairline,
-                                    lineWidth: 0.5
-                                )
+                                Capsule().fill(isSelected ? Palette.ember : Palette.inkGhost.opacity(0.5))
                             }
                     }
                     .buttonStyle(PressableCardStyle())
@@ -133,17 +121,15 @@ struct OnboardingView: View {
                     Haptics.shared.select()
                     withAnimation(Motion.glide) { step -= 1 }
                 }
-                .font(.plateLabel)
-                .foregroundStyle(Palette.inkFaint)
+                .typeStyle(.micro, Palette.inkFaint)
                 .transition(.opacity)
             }
 
             Spacer()
 
             Button(step == 2 ? "Start" : "Continue") { advance() }
-                .font(.plateLabel)
-                .foregroundStyle(.white)
-                .padding(.horizontal, 24)
+                .typeStyle(.label, .white)
+                .padding(.horizontal, Metrics.roomy)
                 .frame(height: 46)
                 .background(Capsule().fill(Palette.ember))
                 .buttonStyle(PressableCardStyle())

@@ -103,8 +103,7 @@ struct RootView: View {
                 session: app.session(for: day),
                 profile: app.profile,
                 namespace: mealNamespace,
-                onOpenEntry: { app.presentedEntry = .init(id: $0, day: day) },
-                onOpenSummary: {}
+                onOpenEntry: { app.presentedEntry = .init(id: $0, day: day) }
             )
         }
         // Arriving from the Catalog: rises from slightly small. Scale and opacity are
@@ -152,8 +151,9 @@ struct RootView: View {
     }
 
     private var composerLayer: some View {
-        VStack {
+        VStack(spacing: 0) {
             Spacer()
+            FadeBand(height: 72)
             let session = app.session(for: app.focusedDay)
             Composer(
                 text: Bindable(session).draft,
@@ -162,8 +162,9 @@ struct RootView: View {
                 onSend: { session.send(session.draft) },
                 onStop: { session.cancel() }
             )
-            .padding(.horizontal, 14)
-            .padding(.bottom, 8)
+            .padding(.horizontal, Metrics.wide)
+            .padding(.bottom, Metrics.snug)
+            .background(Palette.paper)
         }
         .opacity((1 - app.zoom * 1.8) * chromeOpacity)
         .offset(y: app.zoom * 44)
@@ -172,43 +173,28 @@ struct RootView: View {
 
     private var topBar: some View {
         VStack {
-            HStack(spacing: 12) {
-                Button {
-                    toggleSurface()
-                } label: {
-                    Image(systemName: app.zoom > 0.5 ? "bubble.left.and.text.bubble.right" : "square.grid.2x2")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(Palette.inkSoft)
-                        .frame(width: 34, height: 34)
-                        .background(GlassSurface(cornerRadius: 17, thickness: 9))
-                }
-                .accessibilityLabel(app.zoom > 0.5 ? "Back to the conversation" : "See all meals")
+            HStack(spacing: Metrics.wide) {
+                barButton(
+                    app.zoom > 0.5 ? "text.alignleft" : "square.grid.2x2",
+                    label: app.zoom > 0.5 ? "Back to the conversation" : "See all meals"
+                ) { toggleSurface() }
 
                 Spacer()
 
                 if app.focusedDay != .today && app.zoom < 0.5 {
-                    Button("Today") { app.focus(.today) }
-                        .font(.plateLabel)
-                        .foregroundStyle(Palette.ember)
-                        .padding(.horizontal, 12)
-                        .frame(height: 34)
-                        .background(GlassSurface(cornerRadius: 17, thickness: 9))
-                        .transition(.scale.combined(with: .opacity))
+                    Button { app.focus(.today) } label: {
+                        Text("Today").typeStyle(.micro, Palette.ember)
+                    }
+                    .buttonStyle(PressableCardStyle())
+                    .transition(.opacity)
                 }
 
-                Button {
+                barButton("slider.horizontal.3", label: "Settings") {
                     app.isShowingSettings = true
-                } label: {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(Palette.inkSoft)
-                        .frame(width: 34, height: 34)
-                        .background(GlassSurface(cornerRadius: 17, thickness: 9))
                 }
-                .accessibilityLabel("Settings")
             }
-            .padding(.horizontal, 14)
-            .padding(.top, 4)
+            .plateMargins()
+            .frame(height: 32)
 
             Spacer()
         }
@@ -218,16 +204,30 @@ struct RootView: View {
         .plateAnimation(Motion.snap, value: app.zoom > 0.5)
     }
 
-    /// A wash that tracks the hour. Never announced, but 7am and 9pm shouldn't feel
-    /// identical.
+    /// A glyph, and nothing else.
+    ///
+    /// These were circles of glass. A control that needs a lens to be found is a control
+    /// in the wrong place; at the top of a page with a 48pt masthead below it, a 13pt
+    /// glyph in soft ink is unmissable and adds no furniture.
+    private func barButton(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Palette.inkSoft)
+                .frame(width: 32, height: 32)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableCardStyle())
+        .accessibilityLabel(label)
+    }
+
+    /// One flat colour, edge to edge.
+    ///
+    /// This was a time-of-day gradient. Measured, the margins alone held 586 distinct
+    /// colours spanning 40 levels — a page that cannot decide what colour it is, which is
+    /// most of what "looks generated" means.
     private var background: some View {
-        let wash = Palette.groundWash(hour: Calendar.current.component(.hour, from: .now))
-        return LinearGradient(
-            colors: [wash.top, wash.bottom],
-            startPoint: .top,
-            endPoint: .center
-        )
-        .ignoresSafeArea()
+        Palette.paper.ignoresSafeArea()
     }
 
     private var placeholder: String {

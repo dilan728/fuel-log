@@ -23,8 +23,7 @@ struct StreamingText: View {
 
     var body: some View {
         Text(text)
-            .plateBodyStyle()
-            .foregroundStyle(color)
+            .typeStyle(.body, color)
             .textRenderer(
                 ArrivalRenderer(
                     // `.infinity`, not `.greatestFiniteMagnitude` — the latter *is*

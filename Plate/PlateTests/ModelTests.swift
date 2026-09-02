@@ -193,39 +193,88 @@ final class FoodFormTests: XCTestCase {
     }
 }
 
-final class EditorialLayoutTests: XCTestCase {
+final class CatalogArrangementTests: XCTestCase {
 
     private func entries(_ count: Int) -> [FoodEntry] {
-        (0..<count).map {
-            FoodEntry(name: "Food \($0)", facts: .zero, meal: .lunch)
+        (0..<count).map { FoodEntry(name: "Food \($0)", facts: .zero, meal: .lunch) }
+    }
+
+    func testEveryEntryAppearsExactlyOnceInOrder() {
+        for count in 0...12 {
+            let source = entries(count)
+            let spread = CatalogArrangement.spread(for: source)
+            XCTAssertEqual(spread.all.map(\.id), source.map(\.id), "count \(count)")
         }
     }
 
-    func testEveryEntryAppearsExactlyOnce() {
-        for count in 1...12 {
-            let rows = EditorialLayout.rows(for: entries(count))
-            XCTAssertEqual(rows.flatMap { $0 }.count, count, "count \(count)")
+    func testFirstMealIsTheHero() {
+        let source = entries(4)
+        let spread = CatalogArrangement.spread(for: source)
+        XCTAssertEqual(spread.hero?.id, source.first?.id)
+        XCTAssertEqual(spread.grid.count, 3)
+    }
+
+    func testSingleMealHasNoGrid() {
+        let spread = CatalogArrangement.spread(for: entries(1))
+        XCTAssertNotNil(spread.hero)
+        XCTAssertTrue(spread.grid.isEmpty)
+    }
+
+    func testEmptyDayHasNothing() {
+        let spread = CatalogArrangement.spread(for: [])
+        XCTAssertNil(spread.hero)
+        XCTAssertTrue(spread.grid.isEmpty)
+    }
+}
+
+final class KeywordMatchTests: XCTestCase {
+
+    func testWholeWordsOnly() {
+        // "s-TEA-k" contains "tea", and plain `contains` served steak in a glass.
+        XCTAssertNil(KeywordMatch.score("tea", in: .init("Steak and Chips")))
+        XCTAssertNotNil(KeywordMatch.score("tea", in: .init("Green Tea")))
+    }
+
+    func testPhrasesMatchAcrossWords() {
+        XCTAssertNotNil(KeywordMatch.score("flat white", in: .init("Large Flat White")))
+    }
+
+    func testHeadNounOutranksALongerWordLater() {
+        // The dish is a steak dish, even though "potato" is the longer word.
+        let context = KeywordMatch.Context("Steak and Roast Potatoes")
+        let steak = KeywordMatch.score("steak", in: context) ?? 0
+        let potato = KeywordMatch.score("potato", in: context) ?? 0
+        XCTAssertGreaterThan(steak, potato)
+    }
+
+    func testLongerPhraseStillWinsWhenNeitherLeads() {
+        let context = KeywordMatch.Context("Slow Cooked Chicken Tikka Masala")
+        let tikka = KeywordMatch.score("chicken tikka masala", in: context) ?? 0
+        let chicken = KeywordMatch.score("chicken", in: context) ?? 0
+        XCTAssertGreaterThan(tikka, chicken)
+    }
+}
+
+final class FoodTextureTests: XCTestCase {
+
+    func testShapesAreDistinguished() {
+        XCTAssertEqual(FoodTexture.infer(from: "White Rice"), .grains)
+        XCTAssertEqual(FoodTexture.infer(from: "Caesar Salad"), .leaves)
+        XCTAssertEqual(FoodTexture.infer(from: "Avocado Toast"), .topped)
+        XCTAssertEqual(FoodTexture.infer(from: "Dark Chocolate"), .slab)
+        XCTAssertEqual(FoodTexture.infer(from: "Flat White"), .liquid)
+    }
+
+    func testUnknownFoodIsAPile() {
+        XCTAssertEqual(FoodTexture.infer(from: "Grandmother's Casserole"), .chunks)
+    }
+
+    func testEveryTextureHasSaneRenderParameters() {
+        for texture in FoodTexture.allCases {
+            XCTAssertTrue((0...1).contains(Double(texture.roughness)), "\(texture)")
+            XCTAssertTrue((0...1).contains(Double(texture.subsurface)), "\(texture)")
+            // The shader loops to a fixed bound; exceeding it would silently drop pieces.
+            XCTAssertLessThanOrEqual(texture.pieceCount, 24, "\(texture)")
         }
-    }
-
-    func testNoRowHoldsMoreThanTwo() {
-        for count in 1...12 {
-            for row in EditorialLayout.rows(for: entries(count)) {
-                XCTAssertLessThanOrEqual(row.count, 2)
-                XCTAssertGreaterThanOrEqual(row.count, 1)
-            }
-        }
-    }
-
-    func testTwoItemsMakeOnePair() {
-        XCTAssertEqual(EditorialLayout.rows(for: entries(2)).map(\.count), [2])
-    }
-
-    func testSingleItemIsAHero() {
-        XCTAssertEqual(EditorialLayout.rows(for: entries(1)).map(\.count), [1])
-    }
-
-    func testEmptyDayHasNoRows() {
-        XCTAssertTrue(EditorialLayout.rows(for: []).isEmpty)
     }
 }

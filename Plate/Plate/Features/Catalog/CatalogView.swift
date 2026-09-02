@@ -1,12 +1,11 @@
 import SwiftUI
 
-/// Every meal you've logged, as a magazine.
+/// Every meal you've logged, as a lookbook.
 ///
-/// The layout is a repeating editorial rhythm rather than a uniform grid — a wide
-/// hero, then a two-up, then a two-up — which is what stops a page of food photography
-/// from reading as a spreadsheet of thumbnails. Sections are days, and scrolling
-/// through them updates the focused day, so pinching back in returns you to whatever
-/// you were just looking at.
+/// Captions sit *below* the photographs, in the page ground, the way a plate is captioned
+/// in print. The first version laid a black scrim over the bottom of each image and set
+/// the name in white on top of it — which is the single most generic treatment available,
+/// and it damages the photograph to make room for text the page had space for anyway.
 struct CatalogView: View {
     @Environment(AppModel.self) private var app
     var namespace: Namespace.ID
@@ -14,48 +13,46 @@ struct CatalogView: View {
 
     @State private var visibleDay: DayID?
 
+    private var columns: [GridItem] {
+        [GridItem(.flexible(), spacing: Metrics.gutter),
+         GridItem(.flexible(), spacing: Metrics.gutter)]
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 34, pinnedViews: [.sectionHeaders]) {
+                LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                     ForEach(app.loggedDays) { day in
                         Section {
-                            DaySpread(
-                                day: day,
-                                namespace: namespace,
-                                onOpenEntry: { onOpenEntry($0, day) }
-                            )
+                            DaySpread(day: day, columns: columns, namespace: namespace) {
+                                onOpenEntry($0, day)
+                            }
                         } header: {
-                            CatalogDayHeader(day: day, target: app.profile.calorieTarget)
+                            CatalogDayHeader(day: day)
                         }
                         .id(day)
                     }
 
-                    if app.loggedDays.isEmpty {
-                        CatalogEmptyState()
-                    }
+                    if app.loggedDays.isEmpty { CatalogEmptyState() }
 
-                    Color.clear.frame(height: 100)
+                    Color.clear.frame(height: Metrics.vast)
                 }
-                .padding(.top, 8)
             }
             .safeAreaInset(edge: .top) {
-                // Reserve room for the floating top bar. Content padding is not enough:
-                // pinned headers pin to the scroll view's top edge, not to the content.
-                Color.clear.frame(height: 44)
+                // Pinned headers pin to the scroll view's edge, not to the content, so
+                // room for the floating bar has to be reserved as an inset.
+                Color.clear.frame(height: 40)
             }
             .scrollIndicators(.hidden)
-            .onAppear {
-                // Land on the day the Thread was showing rather than at the top.
-                proxy.scrollTo(app.focusedDay, anchor: .top)
-            }
+            .onAppear { proxy.scrollTo(app.focusedDay, anchor: .top) }
             .onChange(of: visibleDay) { _, day in
                 guard let day else { return }
                 app.focus(day)
             }
         }
-        // Overlays, not colour effects on the scroll view — see `SurfaceOverlays`.
-        .plateFilmTreatment(grain: 0.045, vignette: 0.4)
+        // Grain only. The vignette darkened the page edges, which on a flat paper ground
+        // reads as a lighting effect applied to a printed sheet.
+        .overlay { GrainOverlay(intensity: 0.032) }
     }
 }
 
@@ -63,6 +60,7 @@ struct CatalogView: View {
 
 private struct DaySpread: View {
     let day: DayID
+    let columns: [GridItem]
     var namespace: Namespace.ID
     var onOpenEntry: (UUID) -> Void
 
@@ -70,30 +68,33 @@ private struct DaySpread: View {
     @State private var entries: [FoodEntry] = []
 
     var body: some View {
-        VStack(spacing: 10) {
-            ForEach(Array(EditorialLayout.rows(for: entries).enumerated()), id: \.offset) { _, row in
-                HStack(spacing: 10) {
-                    ForEach(row) { entry in
-                        CatalogTile(
-                            entry: entry,
-                            aspect: row.count == 1 ? 1.42 : 1,
-                            namespace: namespace
-                        ) {
+        let spread = CatalogArrangement.spread(for: entries)
+
+        return VStack(alignment: .leading, spacing: Metrics.roomy) {
+            if let hero = spread.hero {
+                CatalogPlate(entry: hero, namespace: namespace, isHero: true) {
+                    onOpenEntry(hero.id)
+                }
+            }
+
+            if !spread.grid.isEmpty {
+                LazyVGrid(columns: columns, alignment: .leading, spacing: Metrics.roomy) {
+                    ForEach(spread.grid) { entry in
+                        CatalogPlate(entry: entry, namespace: namespace, isHero: false) {
                             onOpenEntry(entry.id)
                         }
                     }
                 }
             }
         }
-        .padding(.horizontal, 16)
+        .plateMargins()
+        .padding(.top, Metrics.wide)
+        .padding(.bottom, Metrics.generous)
         .task {
             let session = app.session(for: day)
             await session.loadIfNeeded()
             entries = session.entries
-            // Fill in any photography this day is missing, now that it's on screen.
-            for entry in entries {
-                app.ensureImage(for: entry, on: day)
-            }
+            for entry in entries { app.ensureImage(for: entry, on: day) }
         }
         .onChange(of: app.session(for: day).entries) { _, updated in
             entries = updated
@@ -101,86 +102,44 @@ private struct DaySpread: View {
     }
 }
 
-/// Chunks a day's entries into an alternating wide/two-up rhythm.
-enum EditorialLayout {
-    static func rows(for entries: [FoodEntry]) -> [[FoodEntry]] {
-        // Two items read better side by side than as two stacked heroes.
-        if entries.count == 2 { return [entries] }
+// MARK: - Plate
 
-        var rows: [[FoodEntry]] = []
-        var index = 0
-        // Wide, pair, pair, wide, pair, pair… A lone trailing entry becomes a wide
-        // hero rather than a half-empty row.
-        let pattern = [1, 2, 2]
-        var step = 0
-
-        while index < entries.count {
-            let size = pattern[step % pattern.count]
-            let remaining = entries.count - index
-            let take = remaining == 1 ? 1 : min(size, remaining)
-            rows.append(Array(entries[index..<(index + take)]))
-            index += take
-            step += 1
-        }
-        return rows
-    }
-}
-
-// MARK: - Tile
-
-private struct CatalogTile: View {
+private struct CatalogPlate: View {
     let entry: FoodEntry
-    var aspect: CGFloat
     var namespace: Namespace.ID
+    var isHero: Bool
     var onTap: () -> Void
 
     var body: some View {
         Button(action: onTap) {
-            // A clear box sets the aspect ratio and the image fills it. Applying
-            // `aspectRatio(_, contentMode: .fill)` to the image itself lets it overflow
-            // the layout frame, and the corner clip then cuts the wrong rectangle.
-            Color.clear
-                .aspectRatio(aspect, contentMode: .fit)
-                .frame(maxWidth: .infinity)
-                .overlay {
-                    FoodImageView(entry: entry, cornerRadius: 20)
-                        .matchedGeometryEffect(id: entry.id, in: namespace)
+            VStack(alignment: .leading, spacing: Metrics.snug) {
+                FoodImageView(entry: entry, cornerRadius: Metrics.imageRadius)
+                    .matchedGeometryEffect(id: entry.id, in: namespace)
+                    .aspectRatio(1, contentMode: .fit)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(entry.name)
+                        .typeStyle(isHero ? .title : .subtitle)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(alignment: .firstTextBaseline, spacing: Metrics.snug) {
+                        // Quantity only. The meal is implied by the day's running order,
+                        // and carrying it here truncated the line in a two-column tile.
+                        Text(entry.quantity.display)
+                            .typeStyle(.micro, Palette.inkFaint)
+                            .lineLimit(1)
+                        Spacer(minLength: Metrics.tight)
+                        Text("\(Int(entry.facts.calories.rounded()))")
+                            .typeStyle(.numeric, Palette.inkSoft)
+                    }
                 }
-                .overlay(alignment: .bottomLeading) { caption }
-                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            }
         }
         .buttonStyle(PressableCardStyle())
+        .accessibilityElement(children: .combine)
         .accessibilityLabel("\(entry.name), \(Int(entry.facts.calories.rounded())) calories")
-    }
-
-    private var caption: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(entry.name)
-                .font(.system(size: aspect > 1.2 ? 19 : 15, weight: .regular, design: .serif))
-                .foregroundStyle(.white)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-
-            Text("\(Int(entry.facts.calories.rounded())) cal")
-                .font(.system(size: 10, weight: .medium))
-                .tracking(0.7)
-                .foregroundStyle(.white.opacity(0.82))
-        }
-        .shadow(color: .black.opacity(0.55), radius: 7, y: 1)
-        .padding(.horizontal, 13)
-        .padding(.bottom, 11)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            // A scrim only where the text is, so the photograph stays a photograph.
-            LinearGradient(
-                colors: [.black.opacity(0.55), .black.opacity(0)],
-                startPoint: .bottom,
-                endPoint: .top
-            )
-            .frame(height: 96)
-            .frame(maxHeight: .infinity, alignment: .bottom)
-            .allowsHitTesting(false)
-        }
     }
 }
 
@@ -188,59 +147,46 @@ private struct CatalogTile: View {
 
 private struct CatalogDayHeader: View {
     let day: DayID
-    let target: Double?      // reserved for a future goal indicator in the header
 
     @Environment(AppModel.self) private var app
 
-    private var totals: NutritionFacts {
-        app.session(for: day).totals
-    }
+    private var totals: NutritionFacts { app.session(for: day).totals }
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(day.title)
-                .font(.plateTitle)
-                .foregroundStyle(Palette.ink)
+        VStack(spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(day.title)
+                    .typeStyle(.title)
+                Spacer(minLength: Metrics.step)
+                Text("\(DayHeader.figure(totals.calories)) cal")
+                    .typeStyle(.micro, Palette.inkFaint)
+            }
+            .plateMargins()
+            .padding(.top, Metrics.step)
+            .padding(.bottom, Metrics.snug)
 
-            Spacer()
-
-            Text("\(Int(totals.calories.rounded())) cal")
-                .font(.plateCaption)
-                .tracking(0.7)
-                .foregroundStyle(Palette.inkFaint)
-
-            MacroBar(facts: totals, height: 3)
-                .frame(width: 44)
-                .padding(.leading, 4)
+            EnergyRule(facts: totals, target: app.profile.calorieTarget, thickness: 2, isAnimated: false)
+                .plateMargins()
+                .padding(.bottom, Metrics.snug)
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 10)
         .background {
-            // Glass, so photographs scroll under the header rather than being clipped
-            // by an opaque bar.
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .overlay(alignment: .bottom) {
-                    Palette.hairline.frame(height: 0.5)
-                }
-                .ignoresSafeArea(edges: .horizontal)
+            // Solid paper, not a material. A material over a warm page renders as a grey
+            // band that does not match anything else on screen; a printed page simply has
+            // a header, and the measure below it is border enough.
+            Rectangle().fill(Palette.paper)
         }
     }
 }
 
 private struct CatalogEmptyState: View {
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: Metrics.snug) {
             Text("Nothing here yet")
-                .font(.plateTitle)
-                .foregroundStyle(Palette.ink)
+                .typeStyle(.title)
             Text("Log a few meals and they'll collect here.")
-                .font(.plateBody)
-                .foregroundStyle(Palette.inkFaint)
-                .multilineTextAlignment(.center)
+                .typeStyle(.body, Palette.inkFaint)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 80)
-        .padding(.horizontal, 40)
+        .plateMargins()
+        .padding(.top, Metrics.vast)
     }
 }

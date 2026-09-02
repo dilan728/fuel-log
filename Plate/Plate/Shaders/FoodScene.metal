@@ -368,10 +368,16 @@ static Hit march(float3 origin, float3 direction, constant FoodSceneParams &para
 /// samples to approximate the true closest approach, which removes them.
 static float softShadow(float3 origin, float3 direction, float k, constant FoodSceneParams &params) {
     float result = 1.0f;
-    float t = 0.035f;
+
+    // Dither the starting phase. The march samples at discrete positions, so every pixel
+    // stepping in lockstep quantises the penumbra into terraces — smooth arcs near the
+    // object and a jagged contour-map further out, which is exactly what a backdrop
+    // should never have. Offsetting each ray by a hash of its own origin decorrelates
+    // neighbours and turns the banding into noise the film grain then absorbs.
+    float t = 0.035f + hash13(origin * 91.7f) * 0.030f;
     float previous = 1e20f;
 
-    for (int i = 0; i < 56; ++i) {
+    for (int i = 0; i < 64; ++i) {
         float h = mapScene(origin + direction * t, params).distance;
 
         float y = h * h / (2.0f * previous);
@@ -379,8 +385,11 @@ static float softShadow(float3 origin, float3 direction, float k, constant FoodS
         result = min(result, k * d / max(t - y, 1e-4f));
         previous = h;
 
-        t += clamp(h, 0.005f, 0.11f);
-        if (result < 0.002f || t > 3.6f) { break; }
+        t += clamp(h, 0.004f, 0.085f);
+        // Reach far enough that the cast shadow ends because the light stops being
+        // occluded, not because the ray ran out of budget — a fixed cutoff left a
+        // straight edge across the backdrop where shadowing abruptly ceased.
+        if (result < 0.002f || t > 6.5f) { break; }
     }
     // Smootherstep the result: a linear penumbra still reads as a gradient ramp rather
     // than as light falling off around an object.
@@ -391,8 +400,9 @@ static float softShadow(float3 origin, float3 direction, float k, constant FoodS
 static float ambientOcclusion(float3 p, float3 n, constant FoodSceneParams &params) {
     float occlusion = 0.0f;
     float scale = 1.0f;
+    float phase = hash13(p * 57.3f);
     for (int i = 0; i < 5; ++i) {
-        float h = 0.012f + 0.052f * float(i);
+        float h = 0.012f + 0.052f * (float(i) + phase * 0.7f);
         float d = mapScene(p + n * h, params).distance;
         occlusion += (h - d) * scale;
         scale *= 0.72f;
@@ -619,7 +629,7 @@ kernel void foodSceneResolve(texture2d<float, access::read>  source [[texture(0)
     // Vignette, elliptical and very slight.
     float2 uv = (float2(gid) + 0.5f) / float2(output.get_width(), output.get_height());
     float2 centred = uv - 0.5f;
-    colour *= 1.0f - smoothstep(0.42f, 0.98f, length(centred)) * 0.14f;
+    colour *= 1.0f - smoothstep(0.48f, 1.02f, length(centred)) * 0.07f;
 
     // Grain, luminance-dependent as silver halide is.
     float luminance = dot(colour, float3(0.2126f, 0.7152f, 0.0722f));

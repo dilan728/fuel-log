@@ -3,8 +3,8 @@ import SwiftUI
 /// One meal, up close.
 ///
 /// Direct manipulation on purpose: adjusting a portion should not require a sentence.
-/// Changing the amount rescales the macros live — the numbers move under your thumb,
-/// which is the fastest way to understand what a portion is worth.
+/// Dragging the measure rescales the figures live, which is the fastest way to
+/// understand what a portion is actually worth.
 struct EntryDetailView: View {
     let reference: AppModel.EntryReference
 
@@ -14,35 +14,28 @@ struct EntryDetailView: View {
     @State private var entry: FoodEntry?
     /// Multiplier applied live while dragging; committed on release.
     @State private var scale: Double = 1
-    @State private var isConfirmingDelete = false
+    @State private var isConfirmingRemoval = false
 
     private var session: ThreadSession { app.session(for: reference.day) }
-
-    private var scaledFacts: NutritionFacts {
-        (entry?.facts ?? .zero).scaled(by: scale)
-    }
+    private var scaledFacts: NutritionFacts { (entry?.facts ?? .zero).scaled(by: scale) }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 if let entry {
-                    // Capped and centred rather than full-bleed: at the medium detent a
-                    // full-width square pushed the portion control and macros off the
-                    // bottom, which are the two things this sheet exists for.
-                    FoodImageView(entry: entry, cornerRadius: 24)
+                    FoodImageView(entry: entry, cornerRadius: Metrics.imageRadius)
                         .aspectRatio(1, contentMode: .fit)
-                        .frame(maxWidth: 232)
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 10)
+                        .plateMargins()
+                        .padding(.top, Metrics.step)
 
-                    header(entry)
-                    portionControl(entry)
-                    macros
+                    heading(entry)
+                    figures
+                    portion(entry)
                     provenance(entry)
                     actions(entry)
                 }
             }
-            .padding(.bottom, 40)
+            .padding(.bottom, Metrics.vast)
         }
         .background(Palette.paper)
         .task { await load() }
@@ -50,135 +43,126 @@ struct EntryDetailView: View {
 
     // MARK: Sections
 
-    private func header(_ entry: FoodEntry) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+    private func heading(_ entry: FoodEntry) -> some View {
+        VStack(alignment: .leading, spacing: Metrics.tight) {
             Text(entry.name)
-                .font(.plateTitle)
-                .foregroundStyle(Palette.ink)
+                .typeStyle(.title)
+                .fixedSize(horizontal: false, vertical: true)
 
             if let detail = entry.detail, !detail.isEmpty {
-                Text(detail)
-                    .font(.plateBody)
-                    .foregroundStyle(Palette.inkSoft)
+                Text(detail).typeStyle(.body, Palette.inkSoft)
             }
 
-            Text("\(entry.meal.title) · \(timeText(entry.loggedAt))")
-                .plateCaptionStyle()
-                .padding(.top, 2)
+            Text("\(entry.meal.title) · \(Self.time(entry.loggedAt))")
+                .typeStyle(.micro, Palette.inkFaint)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 20)
+        .plateMargins()
+        .padding(.top, Metrics.roomy)
+        .padding(.bottom, Metrics.wide)
     }
 
-    private func portionControl(_ entry: FoodEntry) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+    private var figures: some View {
+        VStack(alignment: .leading, spacing: Metrics.step) {
+            Hairline()
+
+            HStack(alignment: .firstTextBaseline, spacing: 7) {
+                Text(DayHeader.figure(scaledFacts.calories))
+                    .typeStyle(.masthead)
+                    .contentTransition(.numericText())
+                Text("cal").typeStyle(.micro, Palette.inkFaint)
+                Spacer(minLength: Metrics.step)
+                MacroFigures(facts: scaledFacts, spacing: Metrics.wide)
+            }
+            .plateMargins()
+
+            MacroBar(facts: scaledFacts, width: .infinity, thickness: 2.5)
+                .plateMargins()
+
+            Hairline()
+        }
+        .padding(.bottom, Metrics.roomy)
+        .plateAnimation(Motion.snap, value: scale)
+    }
+
+    private func portion(_ entry: FoodEntry) -> some View {
+        VStack(alignment: .leading, spacing: Metrics.step) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Portion").plateCaptionStyle()
+                Text("Portion").typeStyle(.micro, Palette.inkFaint)
                 Spacer()
                 Text(Quantity(amount: entry.quantity.amount * scale, unit: entry.quantity.unit).display)
-                    .font(.plateNumeric)
-                    .foregroundStyle(Palette.ink)
+                    .typeStyle(.numeric, Palette.ink)
             }
 
             PortionSlider(scale: $scale) { commit(entry) }
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 24)
-    }
-
-    private var macros: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text("\(Int(scaledFacts.calories.rounded()))")
-                    .font(.plateDisplay)
-                    .foregroundStyle(Palette.ink)
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
-                Text("calories").plateCaptionStyle()
-            }
-
-            MacroLegend(facts: scaledFacts, proteinTarget: nil)
-
-            MacroBar(facts: scaledFacts, height: 5)
-                .frame(maxWidth: .infinity)
-        }
-        .padding(.horizontal, 20)
-        .padding(.top, 26)
-        .plateAnimation(Motion.snap, value: scale)
+        .plateMargins()
+        .padding(.bottom, Metrics.roomy)
     }
 
     private func provenance(_ entry: FoodEntry) -> some View {
-        HStack(spacing: 7) {
-            Circle()
-                .fill(confidenceColor(entry.confidence))
-                .frame(width: 5, height: 5)
-            Text(entry.confidence.label)
-                .font(.plateCaption)
-                .tracking(0.5)
-                .foregroundStyle(Palette.inkFaint)
-
+        HStack(spacing: Metrics.snug) {
+            Rectangle()
+                .fill(Self.confidenceColor(entry.confidence))
+                .frame(width: 12, height: 2)
+            Text(entry.confidence.label).typeStyle(.micro, Palette.inkFaint)
             if case .failed = entry.image {
-                Text("· no photo")
-                    .font(.plateCaption)
-                    .foregroundStyle(Palette.inkFaint)
+                Text("· no photo").typeStyle(.micro, Palette.inkFaint)
             }
+            Spacer()
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 20)
+        .plateMargins()
+        .padding(.bottom, Metrics.roomy)
     }
 
     private func actions(_ entry: FoodEntry) -> some View {
-        HStack(spacing: 10) {
-            if FoodImageService.shared.isConfigured {
-                Button {
-                    Task {
-                        await session.updateEntry(entry.id) { $0.image = .none }
-                        await load()
-                        app.ensureImage(for: entry, on: reference.day)
-                    }
-                } label: {
-                    Label("New photo", systemImage: "sparkles")
-                        .font(.plateLabel)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background {
-                            RoundedRectangle(cornerRadius: 15, style: .continuous)
-                                .fill(Palette.inkGhost.opacity(0.4))
-                        }
-                }
-                .buttonStyle(PressableCardStyle())
-                .foregroundStyle(Palette.inkSoft)
-            }
-
+        VStack(spacing: 0) {
+            Hairline()
             Button {
-                if isConfirmingDelete {
+                Task {
+                    await session.updateEntry(entry.id) { $0.image = .none }
+                    await load()
+                    app.ensureImage(for: entry, on: reference.day)
+                }
+            } label: {
+                actionLabel("New picture", symbol: "sparkles", tint: Palette.inkSoft)
+            }
+            .buttonStyle(RowPressStyle())
+
+            Hairline()
+            Button {
+                if isConfirmingRemoval {
                     Task {
                         await session.deleteEntry(entry.id)
                         await app.refreshLoggedDays()
                         dismiss()
                     }
                 } else {
-                    withAnimation(Motion.snap) { isConfirmingDelete = true }
+                    withAnimation(Motion.snap) { isConfirmingRemoval = true }
                     Haptics.shared.select()
                 }
             } label: {
-                Label(
-                    isConfirmingDelete ? "Tap again to remove" : "Remove",
-                    systemImage: "trash"
+                actionLabel(
+                    isConfirmingRemoval ? "Tap again to remove" : "Remove",
+                    symbol: "minus",
+                    tint: Palette.alert
                 )
-                .font(.plateLabel)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background {
-                    RoundedRectangle(cornerRadius: 15, style: .continuous)
-                        .fill(Palette.alert.opacity(isConfirmingDelete ? 0.16 : 0.07))
-                }
             }
-            .buttonStyle(PressableCardStyle())
-            .foregroundStyle(Palette.alert)
+            .buttonStyle(RowPressStyle())
+            Hairline()
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 30)
+    }
+
+    private func actionLabel(_ title: String, symbol: String, tint: Color) -> some View {
+        HStack(spacing: Metrics.step) {
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .semibold))
+            Text(title).typeStyle(.body)
+            Spacer()
+        }
+        .foregroundStyle(tint)
+        .plateMargins()
+        .padding(.vertical, Metrics.wide)
+        .contentShape(Rectangle())
     }
 
     // MARK: Data
@@ -196,8 +180,8 @@ struct EntryDetailView: View {
             await session.updateEntry(entry.id) { stored in
                 stored.quantity.amount *= factor
                 stored.facts = stored.facts.scaled(by: factor)
-                // A hand-adjusted portion is exactly as good as measured — the user
-                // just told us what it was.
+                // A hand-adjusted portion is exactly as good as measured — the user just
+                // told us what it was.
                 stored.confidence = .measured
             }
             await load()
@@ -206,23 +190,23 @@ struct EntryDetailView: View {
         }
     }
 
-    private func confidenceColor(_ confidence: Confidence) -> Color {
+    private static func confidenceColor(_ confidence: Confidence) -> Color {
         switch confidence {
         case .measured: return Palette.ember
         case .estimated: return Palette.carbs
-        case .guessed: return Palette.inkFaint
+        case .guessed: return Palette.inkGhost
         }
     }
 
-    private func timeText(_ date: Date) -> String {
+    private static func time(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "h:mm a"
         return formatter.string(from: date)
     }
 }
 
-/// A portion multiplier you drag. Detents at the halves and whole numbers, so landing
-/// on "1½" is easy and landing on "1.47" takes deliberate effort.
+/// A portion multiplier you drag. Detents at the halves and whole numbers, so landing on
+/// "1½" is easy and landing on "1.47" takes deliberate effort.
 private struct PortionSlider: View {
     @Binding var scale: Double
     var onCommit: () -> Void
@@ -235,22 +219,28 @@ private struct PortionSlider: View {
             let position = normalized(scale) * width
 
             ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(Palette.ringTrack)
-                    .frame(height: 4)
+                Rectangle()
+                    .fill(Palette.track)
+                    .frame(height: 2)
+
+                // Detent ticks, so the scale is legible before you touch it.
+                ForEach(Array(stops.enumerated()), id: \.offset) { _, stop in
+                    Rectangle()
+                        .fill(Palette.track)
+                        .frame(width: 1, height: 6)
+                        .offset(x: normalized(stop) * width)
+                }
+
+                Rectangle()
+                    .fill(Palette.ember)
+                    .frame(width: max(position, 2), height: 2)
 
                 Capsule()
                     .fill(Palette.ember)
-                    .frame(width: max(position, 4), height: 4)
-
-                Circle()
-                    .fill(Palette.paperRaised)
-                    .frame(width: 24, height: 24)
-                    .shadow(color: .black.opacity(0.16), radius: 5, y: 2)
-                    .overlay(Circle().strokeBorder(Palette.ember, lineWidth: 2))
-                    .offset(x: position - 12)
+                    .frame(width: 3, height: 18)
+                    .offset(x: position - 1.5)
             }
-            .frame(height: 24)
+            .frame(height: 22)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
@@ -263,7 +253,7 @@ private struct PortionSlider: View {
                     .onEnded { _ in onCommit() }
             )
         }
-        .frame(height: 24)
+        .frame(height: 22)
         .accessibilityValue("\(String(format: "%.2f", scale)) times the logged portion")
     }
 
@@ -275,7 +265,7 @@ private struct PortionSlider: View {
         (stops.first ?? 0.25) + fraction * ((stops.last ?? 3) - (stops.first ?? 0.25))
     }
 
-    /// Pulls toward a stop when close, but doesn't prevent values in between.
+    /// Pulls toward a stop when close, without preventing values in between.
     private func snap(_ value: Double) -> Double {
         guard let nearest = stops.min(by: { abs($0 - value) < abs($1 - value) }) else { return value }
         return abs(nearest - value) < 0.08 ? nearest : (value * 100).rounded() / 100

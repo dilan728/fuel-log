@@ -6,14 +6,13 @@ struct DayThreadView: View {
     let profile: UserProfile
     var namespace: Namespace.ID
     var onOpenEntry: (UUID) -> Void
-    var onOpenSummary: () -> Void
 
     @State private var scrollOffset: CGFloat = 0
     @State private var greeting: String = ""
 
     /// Header collapse, driven by how far the thread has scrolled.
     private var collapse: Double {
-        Curve.remap(Double(scrollOffset), 0, 90, 0, 1)
+        Curve.remap(Double(scrollOffset), 0, 88, 0, 1)
     }
 
     var body: some View {
@@ -22,16 +21,8 @@ struct DayThreadView: View {
                 day: session.day,
                 facts: session.totals,
                 target: profile.calorieTarget,
-                collapse: collapse,
-                onTapRing: onOpenSummary
+                collapse: collapse
             )
-            .background {
-                // The header only earns a divider once content is behind it.
-                Palette.hairline
-                    .frame(height: 0.5)
-                    .frame(maxHeight: .infinity, alignment: .bottom)
-                    .opacity(collapse)
-            }
 
             transcript
         }
@@ -43,44 +34,40 @@ struct DayThreadView: View {
 
     private var transcript: some View {
         ScrollView {
-                LazyVStack(alignment: .leading, spacing: 20) {
-                    if session.messages.isEmpty {
-                        EmptyDayView(
-                            greeting: greeting,
-                            day: session.day,
-                            onSuggestion: { session.send($0) }
-                        )
-                        .padding(.top, 24)
-                    }
-
-                    ForEach(session.messages) { message in
-                        MessageRow(
-                            message: message,
-                            session: session,
-                            namespace: namespace,
-                            onOpenEntry: onOpenEntry
-                        )
-                        .id(message.id)
-                    }
-
-                    if let failure = session.failure {
-                        RetryRow(message: failure) { session.retry() }
-                    }
-
-                    // Space for the composer, which floats over this scroll view.
-                    Color.clear.frame(height: 92)
+            LazyVStack(alignment: .leading, spacing: Metrics.roomy) {
+                if session.messages.isEmpty {
+                    EmptyDay(greeting: greeting, day: session.day) { session.send($0) }
+                        .padding(.top, Metrics.wide)
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
+
+                ForEach(session.messages) { message in
+                    MessageRow(
+                        message: message,
+                        session: session,
+                        namespace: namespace,
+                        onOpenEntry: onOpenEntry
+                    )
+                    .id(message.id)
+                }
+
+                if let failure = session.failure {
+                    RetryNotice(message: failure) { session.retry() }
+                }
+
+                // Room for the composer, which floats over this scroll view.
+                Color.clear.frame(height: 96)
             }
-            .scrollDismissesKeyboard(.interactively)
-            .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                geometry.contentOffset.y + geometry.contentInsets.top
-            } action: { _, offset in
-                scrollOffset = max(offset, 0)
-            }
-        // Keeps the newest message in view as the reply streams in, without a
-        // scrollTo fighting the user's own scrolling.
+            .plateMargins()
+            .padding(.top, Metrics.wide)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentOffset.y + geometry.contentInsets.top
+        } action: { _, offset in
+            scrollOffset = max(offset, 0)
+        }
+        // Keeps the newest message in view as a reply streams in, without a scrollTo
+        // fighting the user's own scrolling.
         .defaultScrollAnchor(.bottom, for: .sizeChanges)
     }
 }
@@ -96,22 +83,23 @@ private struct MessageRow: View {
     var body: some View {
         switch message.role {
         case .user:
-            HStack {
-                Spacer(minLength: 48)
+            // Set as a margin note: right-aligned, ruled on the outer edge. A tinted
+            // rounded rectangle is the last unmistakable "chat app" object on the page,
+            // and alignment already says who is speaking.
+            HStack(alignment: .top, spacing: Metrics.step) {
+                Spacer(minLength: Metrics.vast)
                 Text(message.text)
-                    .plateBodyStyle()
-                    .foregroundStyle(Palette.ink)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background {
-                        RoundedRectangle(cornerRadius: 19, style: .continuous)
-                            .fill(Palette.emberSoft)
-                    }
+                    .typeStyle(.body, Palette.inkSoft)
+                    .multilineTextAlignment(.trailing)
+                Rectangle()
+                    .fill(Palette.ember)
+                    .frame(width: 2)
             }
+            .fixedSize(horizontal: false, vertical: true)
             .transition(.move(edge: .bottom).combined(with: .opacity))
 
         case .agent:
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: Metrics.step) {
                 ActivityStrip(activities: message.activity)
 
                 if !message.text.isEmpty {
@@ -120,28 +108,17 @@ private struct MessageRow: View {
                     ThinkingIndicator()
                 }
 
-                if !message.entryIDs.isEmpty {
-                    VStack(spacing: 8) {
-                        ForEach(message.entryIDs, id: \.self) { id in
-                            if let entry = session.entry(id) {
-                                FoodCard(entry: entry, namespace: namespace) {
-                                    onOpenEntry(id)
-                                }
-                                .transition(
-                                    .scale(scale: 0.94, anchor: .leading)
-                                    .combined(with: .opacity)
-                                )
-                            }
-                        }
-                    }
-                    .plateAnimation(Motion.bounce, value: message.entryIDs.count)
+                let entries = message.entryIDs.compactMap { session.entry($0) }
+                if !entries.isEmpty {
+                    FoodLedger(entries: entries, namespace: namespace, onTap: onOpenEntry)
+                        .padding(.top, Metrics.tight)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
         case .marker:
             Text(message.text)
-                .plateCaptionStyle()
+                .typeStyle(.micro, Palette.inkFaint)
                 .frame(maxWidth: .infinity, alignment: .center)
         }
     }
@@ -150,22 +127,22 @@ private struct MessageRow: View {
 /// Three dots, before the first token lands.
 private struct ThinkingIndicator: View {
     @State private var phase = 0.0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 5) {
             ForEach(0..<3, id: \.self) { index in
                 Circle()
                     .fill(Palette.inkFaint)
-                    .frame(width: 5, height: 5)
+                    .frame(width: 4, height: 4)
                     .scaleEffect(scale(for: index))
-                    .opacity(0.4 + 0.6 * scale(for: index))
+                    .opacity(0.35 + 0.65 * scale(for: index))
             }
         }
-        .frame(height: 20)
+        .frame(height: 18)
         .onAppear {
-            withAnimation(.linear(duration: 1.1).repeatForever(autoreverses: false)) {
-                phase = 1
-            }
+            guard !reduceMotion else { return }
+            withAnimation(.linear(duration: 1.1).repeatForever(autoreverses: false)) { phase = 1 }
         }
         .accessibilityLabel("Thinking")
     }
@@ -173,87 +150,79 @@ private struct ThinkingIndicator: View {
     private func scale(for index: Int) -> Double {
         // A travelling wave rather than three independent pulses, so it reads as one
         // motion crossing the row.
-        let offset = Double(index) * 0.22
-        let wave = sin((phase - offset) * 2 * .pi)
+        let wave = sin((phase - Double(index) * 0.22) * 2 * .pi)
         return 0.7 + 0.3 * max(wave, 0)
     }
 }
 
-private struct RetryRow: View {
+private struct RetryNotice: View {
     let message: String
     var onRetry: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "exclamationmark.circle")
-                .font(.system(size: 13))
-                .foregroundStyle(Palette.alert)
-
-            Text(message)
-                .font(.plateLabel)
-                .foregroundStyle(Palette.inkSoft)
-
-            Spacer(minLength: 4)
-
-            Button("Try again", action: onRetry)
-                .font(.plateLabel)
-                .foregroundStyle(Palette.ember)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 11)
-        .background {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Palette.alert.opacity(0.07))
+        VStack(alignment: .leading, spacing: Metrics.snug) {
+            Hairline(color: Palette.alert.opacity(0.35))
+            HStack(alignment: .firstTextBaseline) {
+                Text(message)
+                    .typeStyle(.label, Palette.inkSoft)
+                Spacer(minLength: Metrics.step)
+                Button("Try again", action: onRetry)
+                    .typeStyle(.label, Palette.ember)
+            }
         }
     }
 }
 
 // MARK: - Empty day
 
-private struct EmptyDayView: View {
+/// The opening of a day with nothing in it.
+///
+/// The suggestions are set as a ruled list rather than as a row of capsules — a menu
+/// card, which is both more in keeping with the page and easier to read than three pills
+/// of different widths.
+private struct EmptyDay: View {
     let greeting: String
     let day: DayID
     var onSuggestion: (String) -> Void
 
     private var suggestions: [String] {
         let hour = Calendar.current.component(.hour, from: .now)
-        var items: [String]
-        switch hour {
-        case 4..<11: items = ["Two eggs and toast", "Oatmeal with blueberries", "Just a coffee"]
-        case 11..<16: items = ["Chicken salad", "Turkey sandwich", "Leftovers from last night"]
-        case 16..<22: items = ["Pasta and a glass of wine", "Salmon and rice", "Takeaway curry"]
-        default: items = ["A handful of almonds", "Yogurt", "Late snack"]
+        guard day.isToday else {
+            return ["Add something to this day", "The usual", "How did this day go?"]
         }
-        if !day.isToday { items = ["Add something to this day"] + items.prefix(2) }
-        return items
+        switch hour {
+        case 4..<11:  return ["Two eggs and toast", "Oatmeal with blueberries", "Just a coffee"]
+        case 11..<16: return ["Chicken salad", "Turkey sandwich", "Leftovers from last night"]
+        case 16..<22: return ["Pasta and a glass of wine", "Salmon and rice", "Takeaway curry"]
+        default:      return ["A handful of almonds", "Yogurt", "Late snack"]
+        }
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: Metrics.roomy) {
             Text(greeting)
-                .font(.plateTitle)
-                .foregroundStyle(Palette.ink)
+                .typeStyle(.title)
                 .fixedSize(horizontal: false, vertical: true)
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(spacing: 0) {
                 ForEach(suggestions, id: \.self) { suggestion in
+                    Hairline()
                     Button {
                         onSuggestion(suggestion)
                     } label: {
-                        Text(suggestion)
-                            .font(.plateLabel)
-                            .foregroundStyle(Palette.inkSoft)
-                            .padding(.horizontal, 13)
-                            .padding(.vertical, 9)
-                            .background {
-                                Capsule().fill(Palette.paperRaised)
-                            }
-                            .overlay {
-                                Capsule().strokeBorder(Palette.hairline, lineWidth: 0.5)
-                            }
+                        HStack {
+                            Text(suggestion).typeStyle(.body, Palette.inkSoft)
+                            Spacer()
+                            Image(systemName: "arrow.up.right")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(Palette.inkFaint)
+                        }
+                        .padding(.vertical, Metrics.step)
+                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(PressableCardStyle())
+                    .buttonStyle(RowPressStyle())
                 }
+                Hairline()
             }
         }
     }

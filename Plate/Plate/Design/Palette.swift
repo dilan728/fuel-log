@@ -1,111 +1,76 @@
 import SwiftUI
 
-/// The complete color vocabulary of Plate.
+/// The complete colour vocabulary of Plate.
 ///
-/// Nothing outside this file is allowed to name a literal color. The palette is
-/// deliberately tiny: warm paper, one ink, one ember. Macros are separated by
-/// *density* of the same ember rather than by hue — a screen full of food
-/// photography already has plenty of color, and traffic-light macro chips would
-/// turn it into a christmas tree.
+/// Nothing outside this file names a literal colour. The palette is deliberately tiny:
+/// warm paper, one ink, one ember. Two rules that were learned the hard way:
+///
+/// * **The page ground is flat.** The first version washed the background with a
+///   time-of-day gradient; measured, it contained 586 distinct colours in the margins
+///   alone, swinging 40 levels. Nothing looks more generated than a page that cannot
+///   decide what colour it is.
+/// * **Tints are opaque, not alpha.** Ember at 26% over a near-white ground has almost
+///   no contrast at small sizes. Every tint here is pre-blended toward the ground.
 enum Palette {
 
     // MARK: Ground
 
-    /// App background. Warm off-white in light, near-black with a warm bias in dark.
-    static let paper = dynamic(light: 0xFBF8F4, dark: 0x0D0C0B)
+    /// The page. One flat colour, edge to edge.
+    static let paper = dynamic(light: 0xFAF7F2, dark: 0x0C0B0A)
 
-    /// Cards, bubbles, anything lifted off `paper`.
-    static let paperRaised = dynamic(light: 0xFFFFFF, dark: 0x171614)
+    /// A surface *below* the page — the well an image sits in before it loads.
+    static let paperSunken = dynamic(light: 0xF0EAE1, dark: 0x171513)
 
-    /// One step further up — used for the composer and floating bars.
-    static let paperFloating = dynamic(light: 0xFFFFFF, dark: 0x1F1D1B)
+    /// A surface above the page. Used only by the composer, which genuinely floats.
+    static let paperRaised = dynamic(light: 0xFFFFFF, dark: 0x1A1816)
 
     // MARK: Ink
 
-    private static let inkBase = dynamic(light: 0x171511, dark: 0xF5F1EA)
+    private static let inkBase = dynamic(light: 0x14120F, dark: 0xF6F2EB)
 
     static let ink = inkBase
-    static let inkSoft = inkBase.opacity(0.62)
-    static let inkFaint = inkBase.opacity(0.34)
-    static let inkGhost = inkBase.opacity(0.16)
+    static let inkSoft = inkBase.opacity(0.60)
+    static let inkFaint = inkBase.opacity(0.38)
+    static let inkGhost = inkBase.opacity(0.13)
 
-    /// 0.5pt separators. Deliberately weaker than a system separator.
-    static let hairline = dynamic(light: 0x171511, dark: 0xF5F1EA).opacity(0.09)
+    /// One-pixel rules. Deliberately lighter than a system separator: at one physical
+    /// pixel a stronger value reads as a drawn line rather than as structure.
+    static let hairline = dynamic(light: 0x14120F, dark: 0xF6F2EB).opacity(0.13)
 
     // MARK: Accent
 
-    /// The single accent. Everything interactive, everything "yours".
-    static let ember = dynamic(light: 0xE2542B, dark: 0xFF6B3D)
+    static let ember = dynamic(light: 0xC8451F, dark: 0xFF6B3D)
 
-    /// Ember at chip/fill strength.
-    static let emberSoft = dynamic(light: 0xE2542B, dark: 0xFF6B3D).opacity(0.13)
+    /// Ember pre-blended toward paper, for fills that carry text.
+    static let emberWash = dynamic(light: 0xF7E7E0, dark: 0x2A1710)
 
-    /// Ember for text on `emberSoft`.
-    static let emberInk = dynamic(light: 0xB43D1B, dark: 0xFF8A63)
+    /// Ember for text on `emberWash`.
+    static let emberInk = dynamic(light: 0x9E3617, dark: 0xFF8A63)
 
     // MARK: Macro densities
     //
-    // Same hue, three densities. Reads as one family at a glance and stays legible
-    // at ring stroke widths of 6pt.
+    // Same hue, three opaque densities. Reads as one family at a glance and holds its
+    // weight at a 2pt rule, which an alpha tint does not.
 
-    // Opaque tints, not alpha. Ember at 26% opacity over the near-white ring track has
-    // almost no contrast, so a lightly-filled ring read as three disconnected ticks
-    // rather than one short arc. These are the same colours pre-blended toward the
-    // ground, so they hold their weight over any background.
     static let protein = ember
-    static let carbs = dynamic(light: 0xED9E85, dark: 0x9E4A2A)
-    static let fat = dynamic(light: 0xF4CABC, dark: 0x5E2E1C)
+    static let carbs = dynamic(light: 0xDE8E76, dark: 0x9E4A2A)
+    static let fat = dynamic(light: 0xEFC7B8, dark: 0x5E2E1C)
 
-    /// Unfilled remainder of the ring.
-    static let ringTrack = dynamic(light: 0x171511, dark: 0xF5F1EA).opacity(0.07)
+    /// The unfilled remainder of a measure.
+    static let track = dynamic(light: 0x14120F, dark: 0xF6F2EB).opacity(0.09)
 
     // MARK: Semantic
 
-    /// Used only for genuine problems (a failed request), never for "over budget".
-    static let alert = dynamic(light: 0xB4381F, dark: 0xFF7A5C)
+    /// Only for genuine problems — a failed request. Never for "over budget".
+    static let alert = dynamic(light: 0xA33418, dark: 0xFF7A5C)
 
-    // MARK: - Time-of-day ground
-    //
-    // The app background carries a very low-amplitude wash that tracks the hour.
-    // It is never announced; it just means 7am and 9pm don't feel identical.
+    // MARK: Construction
 
-    /// Two stops for the background gradient at a given hour (0..<24).
-    static func groundWash(hour: Int) -> (top: Color, bottom: Color) {
-        let h = Double((hour % 24 + 24) % 24)
-        // Warm at dawn/dusk, neutral-cool at midday, deep at night.
-        let warmth = cos((h - 7.5) / 24 * 2 * .pi)          // peaks at 07:30
-        let dusk = cos((h - 19.0) / 24 * 2 * .pi)           // peaks at 19:00
-        let amber = max(0, warmth) * 0.5 + max(0, dusk) * 0.7
-        let cool = max(0, cos((h - 13.0) / 24 * 2 * .pi))
-
-        let top = dynamicBlend(
-            light: (0xFFF3E6, 0xEEF2F6, amber, cool),
-            dark: (0x1A120C, 0x0B1016, amber, cool)
-        )
-        return (top, paper)
-    }
-
-    // MARK: - Construction
-
-    /// Builds a `Color` that resolves per trait collection, so light/dark are
-    /// correct even inside `drawingGroup()` and shader-backed views.
+    /// Builds a `Color` that resolves per trait collection, so light and dark are both
+    /// correct inside shader-backed and rasterised views.
     static func dynamic(light: UInt32, dark: UInt32) -> Color {
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark ? UIColor(hex: dark) : UIColor(hex: light)
-        })
-    }
-
-    /// Blends two hexes toward `paper` by the given weights, per appearance.
-    private static func dynamicBlend(
-        light: (UInt32, UInt32, Double, Double),
-        dark: (UInt32, UInt32, Double, Double)
-    ) -> Color {
-        Color(uiColor: UIColor { traits in
-            let isDark = traits.userInterfaceStyle == .dark
-            let spec = isDark ? dark : light
-            let base = UIColor(hex: isDark ? 0x0D0C0B : 0xFBF8F4)
-            let warm = UIColor(hex: spec.0).blended(with: base, amount: 1 - spec.2 * 0.9)
-            return warm.blended(with: UIColor(hex: spec.1), amount: spec.3 * 0.35)
         })
     }
 }

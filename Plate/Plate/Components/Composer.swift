@@ -2,8 +2,10 @@ import SwiftUI
 
 /// The input bar.
 ///
-/// Floats over the conversation on glass rather than sitting in a bordered footer, so
-/// the thread reads as a continuous page that the bar happens to be resting on.
+/// Floats over the conversation on a material, bounded by a single hairline. The first
+/// version added a shader-drawn specular rim, and against a dark page it became the
+/// brightest object on screen — a control announcing itself louder than the content it
+/// exists to add to.
 struct Composer: View {
     @Binding var text: String
     var isResponding: Bool
@@ -12,36 +14,45 @@ struct Composer: View {
     var onStop: () -> Void
 
     @FocusState private var isFocused: Bool
-    @State private var sendButtonScale: CGFloat = 1
+    @State private var sendScale: CGFloat = 1
+    @Environment(\.displayScale) private var displayScale
 
     private var canSend: Bool {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: Metrics.controlRadius, style: .continuous)
+    }
+
     var body: some View {
-        HStack(alignment: .bottom, spacing: 10) {
+        HStack(alignment: .bottom, spacing: Metrics.snug) {
             TextField(placeholder, text: $text, axis: .vertical)
-                .plateBodyStyle()
-                .foregroundStyle(Palette.ink)
+                .typeStyle(.body)
                 .tint(Palette.ember)
                 .lineLimit(1...5)
                 .focused($isFocused)
                 .submitLabel(.send)
                 .onSubmit(send)
-                .padding(.leading, 6)
                 .padding(.vertical, 7)
 
-            actionButton
+            action
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(GlassSurface(cornerRadius: 25, thickness: 16))
+        .padding(.leading, Metrics.wide)
+        .padding(.trailing, Metrics.snug)
+        .padding(.vertical, Metrics.snug)
+        .background {
+            shape
+                .fill(.regularMaterial)
+                .overlay {
+                    shape.strokeBorder(Palette.hairline, lineWidth: 1 / displayScale)
+                }
+        }
         .plateAnimation(Motion.snap, value: canSend)
         .plateAnimation(Motion.snap, value: isResponding)
     }
 
-    @ViewBuilder
-    private var actionButton: some View {
+    private var action: some View {
         Button {
             if isResponding {
                 onStop()
@@ -51,16 +62,14 @@ struct Composer: View {
             }
         } label: {
             ZStack {
-                Circle()
-                    .fill(canSend || isResponding ? Palette.ember : Palette.inkGhost)
-
+                Circle().fill(canSend || isResponding ? Palette.ember : Palette.inkGhost)
                 Image(systemName: isResponding ? "stop.fill" : "arrow.up")
-                    .font(.system(size: isResponding ? 11 : 14, weight: .bold))
+                    .font(.system(size: isResponding ? 10 : 13, weight: .bold))
                     .foregroundStyle(canSend || isResponding ? Color.white : Palette.inkFaint)
                     .contentTransition(.symbolEffect(.replace))
             }
-            .frame(width: 34, height: 34)
-            .scaleEffect(sendButtonScale)
+            .frame(width: 32, height: 32)
+            .scaleEffect(sendScale)
         }
         .buttonStyle(.plain)
         .disabled(!canSend && !isResponding)
@@ -70,9 +79,32 @@ struct Composer: View {
     private func send() {
         guard canSend else { return }
         onSend()
-        // A quick squash on the button so the send has a physical beat, independent of
-        // however long the reply takes to start.
-        withAnimation(.easeOut(duration: 0.09)) { sendButtonScale = 0.86 }
-        withAnimation(Motion.bounce.delay(0.09)) { sendButtonScale = 1 }
+        // A quick squash, so the send has a physical beat independent of however long
+        // the reply takes to begin.
+        withAnimation(.easeOut(duration: 0.08)) { sendScale = 0.84 }
+        withAnimation(Motion.bounce.delay(0.08)) { sendScale = 1 }
+    }
+}
+
+/// A band that fades the page out beneath a floating bar.
+///
+/// The one gradient in the app that earns its place: without it, text scrolls to a hard
+/// stop behind the composer, and with a solid backing the composer becomes a slab.
+struct FadeBand: View {
+    var height: CGFloat = 64
+
+    var body: some View {
+        LinearGradient(
+            stops: [
+                .init(color: Palette.paper.opacity(0), location: 0),
+                .init(color: Palette.paper.opacity(0.86), location: 0.55),
+                .init(color: Palette.paper, location: 1)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .frame(height: height)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }

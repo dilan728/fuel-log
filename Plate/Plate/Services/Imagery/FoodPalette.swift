@@ -13,7 +13,7 @@ struct FoodPalette: Equatable, Sendable {
 
     /// Warm neutral studio backdrop — the constant that makes every plate in the
     /// catalog look like it was shot in the same room.
-    static let studioGround = Palette.dynamic(light: 0xF2EBE0, dark: 0x2A2622)
+    static let studioGround = Palette.dynamic(light: 0xF8F2E9, dark: 0x2A2622)
 
     /// Bread, dough, pastry. The thing a topping sits on. Kept separate from the food
     /// palette because a pizza's base is crust-coloured, not tomato-coloured, and the
