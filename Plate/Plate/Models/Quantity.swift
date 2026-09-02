@@ -33,6 +33,30 @@ struct Quantity: Codable, Hashable, Sendable {
             }
         }
 
+        /// Units that name a count of things rather than an amount of stuff. "2 eggs"
+        /// against a per-egg row is a ratio; "2 bowls" against a per-cup row is not.
+        var isCountLike: Bool {
+            switch self {
+            case .piece, .slice, .serving: return true
+            default: return false
+            }
+        }
+
+        /// Grams per unit, where the unit measures mass or volume. Volume is treated as
+        /// water-density, which is close enough for the drinks and sauces this applies
+        /// to and much better than not converting at all.
+        var gramsPerUnit: Double? {
+            switch self {
+            case .gram: return 1
+            case .ounce: return 28.3495
+            case .milliliter: return 1
+            case .fluidOunce: return 29.5735
+            case .tablespoon: return 15
+            case .teaspoon: return 5
+            default: return nil
+            }
+        }
+
         /// Units that attach without a space ("200g" not "200 g").
         var isTight: Bool {
             switch self {
@@ -43,6 +67,11 @@ struct Quantity: Codable, Hashable, Sendable {
     }
 
     static let one = Quantity(amount: 1, unit: .serving)
+
+    /// Mass in grams, when this quantity measures mass or volume.
+    var grams: Double? {
+        unit.gramsPerUnit.map { $0 * amount }
+    }
 
     /// "2 slices", "180g", "×3". The food's own name sits next to this everywhere it
     /// is shown, so a bare count is written "×3" rather than "3" — "3 · Breakfast"

@@ -47,8 +47,18 @@ actor LogStore {
     }
 
     /// Every day with something in it, newest first.
+    ///
+    /// Unions the disk with what is in memory: writes are debounced, so a day logged a
+    /// moment ago has no file yet, and reading only the directory made it invisible to
+    /// history search and to the Catalog until the timer fired.
     func knownDays() -> [DayID] {
-        if let knownDaysCache { return knownDaysCache }
+        let pending = cache.filter { !$0.value.isEmpty }.keys
+        if let cached = knownDaysCache {
+            guard !pending.allSatisfy(cached.contains) else { return cached }
+            let merged = Array(Set(cached).union(pending)).sorted(by: >)
+            knownDaysCache = merged
+            return merged
+        }
         // URL-based, not `contentsOfDirectory(atPath:)`. `URL.path()` percent-encodes
         // by default, and the container path always contains "Application Support" —
         // so the string form silently resolves to nothing and every day disappears.
@@ -59,9 +69,9 @@ actor LogStore {
         let days = contents
             .filter { $0.pathExtension == "json" }
             .compactMap { Self.parseDayID(fileName: $0.lastPathComponent) }
-            .sorted(by: >)
-        knownDaysCache = days
-        return days
+        let merged = Array(Set(days).union(pending)).sorted(by: >)
+        knownDaysCache = merged
+        return merged
     }
 
     /// The most recent day that actually has food in it. Used to decide where to open.

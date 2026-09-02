@@ -27,7 +27,10 @@ struct StreamingText: View {
             .foregroundStyle(color)
             .textRenderer(
                 ArrivalRenderer(
-                    progress: shouldAnimate ? progress : .greatestFiniteMagnitude,
+                    // `.infinity`, not `.greatestFiniteMagnitude` — the latter *is*
+                    // finite, so the renderer's settled-text fast path never triggered
+                    // and every static message walked its glyphs on every frame.
+                    progress: shouldAnimate ? progress : .infinity,
                     rampWidth: rampWidth,
                     tint: Palette.ember
                 )

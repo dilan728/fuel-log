@@ -13,13 +13,18 @@ the catalog, the entry sheet, light and dark.
 - Surfaces: Thread, Catalog, Entry detail, Settings, Onboarding
 - Metal: eleven stitchable entry points
 
+**Tests** — 101, all passing. `xcodebuild test -scheme Plate`. They cover the parts
+where being wrong is silent: nutrition matching and scaling, phrase parsing, intent
+classification, calendar arithmetic, wire-format round trips, the tool runner against a
+real store, and the catalog layout. Three of them exist because they caught real bugs
+and would catch them again.
+
 **Not done**
 - The remote agent has never run against a live key (none configured). The loop, SSE
   parsing and tool dispatch are exercised only by the local backend, which shares the
   tool runner but not the wire path.
 - Image generation likewise: the request shapes follow current docs but have not been
   round-tripped against either API.
-- No tests. For a codebase this size that is the largest gap.
 - `search_history` and `update_profile` are reachable only from the remote agent; the
   local backend does not route to them.
 - USDA lookup is a Settings field with no client behind it yet.
@@ -76,3 +81,20 @@ pre-blended toward the ground.
 
 **A bare count reads as an ID.** `2 · Breakfast` scans as a row number, not a quantity.
 It is now `×2`.
+
+**Units are not all the same kind of thing, and conflating them is expensive.** The
+first scaling rule was "same unit → ratio, otherwise treat the amount as a count of
+servings". That is right for "2 bowls" of a per-cup row and catastrophically wrong for
+"200g chicken breast", which logged 46,200 calories — a real day reached 48,559 in the
+simulator. Fixed by giving every row a serving mass so mass and volume convert properly,
+by only multiplying a serving when the serving is itself count-like, and by clamping the
+last-resort path. Three tests now guard it, including one that sweeps every row against
+every unit and asserts nothing can run away.
+
+**Trigrams cannot see a substitution in the middle of a word.** "brocoli" → "broccoli"
+works (a dropped letter costs three trigrams out of fifteen); "avacado" → "avocado" does
+not, because the wrong letter spoils the three trigrams containing it. Matching now
+takes the better of trigram similarity and a bounded edit distance.
+
+**Word matching needs word boundaries.** `contains` served steak in a glass, because
+"s-TEA-k" contains "tea".

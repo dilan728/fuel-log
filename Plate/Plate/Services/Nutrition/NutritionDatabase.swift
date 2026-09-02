@@ -9,21 +9,34 @@ struct FoodRecord: Identifiable, Hashable, Sendable {
     var servingLabel: String
     /// The serving this record's numbers describe.
     var serving: Quantity
+    /// Approximate mass of one `serving`, in grams. What makes "200g of chicken"
+    /// convertible rather than two hundred servings of chicken.
+    var servingGrams: Double
     /// Nutrition for exactly one `serving`.
     var factsPerServing: NutritionFacts
 
-    /// Scales to a requested amount.
-    ///
-    /// Returns `.measured` only when the requested unit matches the record's own unit,
-    /// because that is the only case where the arithmetic is exact rather than an
-    /// assumption about what "a bowl" means.
+    /// Scales to a requested amount, in four cases of decreasing certainty.
     func facts(for quantity: Quantity) -> (facts: NutritionFacts, confidence: Confidence) {
+        // 1. Same unit: an exact ratio.
         if quantity.unit == serving.unit, serving.amount > 0 {
             return (factsPerServing.scaled(by: quantity.amount / serving.amount), .measured)
         }
-        // Different unit: treat the amount as a count of servings. "2 bowls of rice"
-        // when the record is per-cup is an estimate, and we say so.
-        return (factsPerServing.scaled(by: max(quantity.amount, 0.1)), .estimated)
+
+        // 2. A mass or volume, converted through the serving's known mass. Without this
+        //    step "200g chicken" multiplied a serving by two hundred.
+        if let requested = quantity.grams, servingGrams > 0 {
+            return (factsPerServing.scaled(by: requested / servingGrams), .measured)
+        }
+
+        // 3. A count against a count-like serving: "3 slices" of a per-slice row.
+        if quantity.unit.isCountLike, serving.unit.isCountLike, serving.amount > 0 {
+            return (factsPerServing.scaled(by: quantity.amount / serving.amount), .estimated)
+        }
+
+        // 4. Otherwise the amount is a number of servings — "2 bowls" of a per-cup row.
+        //    Clamped, because an unbounded multiplier here is how a day ends up with
+        //    forty thousand calories in it.
+        return (factsPerServing.scaled(by: min(max(quantity.amount, 0.1), 12)), .estimated)
     }
 }
 
@@ -58,7 +71,7 @@ final class NutritionDatabase: Sendable {
             let fields = line.split(separator: "|", omittingEmptySubsequences: false).map {
                 $0.trimmingCharacters(in: .whitespaces)
             }
-            guard fields.count >= 10 else { continue }
+            guard fields.count >= 11 else { continue }
 
             let aliases = fields[1]
                 .split(separator: ",")
@@ -70,7 +83,8 @@ final class NutritionDatabase: Sendable {
                   let kcal = Double(fields[5]),
                   let protein = Double(fields[6]),
                   let carbs = Double(fields[7]),
-                  let fat = Double(fields[8])
+                  let fat = Double(fields[8]),
+                  let grams = Double(fields[10])
             else { continue }
 
             let record = FoodRecord(
@@ -78,6 +92,7 @@ final class NutritionDatabase: Sendable {
                 aliases: aliases,
                 servingLabel: fields[2],
                 serving: Quantity(amount: amount, unit: unit),
+                servingGrams: grams,
                 factsPerServing: NutritionFacts(
                     calories: kcal,
                     protein: protein,
@@ -162,9 +177,17 @@ final class NutritionDatabase: Sendable {
             return 0.34 + 0.28 * jaccard
         }
 
-        // Last resort: character trigrams, which tolerate plurals and typos
-        // ("brocoli" → "broccoli") without matching unrelated words.
-        return trigramSimilarity(needle, candidate) * 0.72
+        // Last resort: two typo measures, because they fail on different mistakes.
+        //
+        // Trigrams handle plurals and dropped letters ("brocoli" → "broccoli") but are
+        // weak against a substitution in the middle of a word: "avacado" vs "avocado"
+        // differ by one letter and share only four of seven trigrams, because the wrong
+        // letter spoils the three trigrams containing it. Edit distance catches exactly
+        // that case. Whichever is more confident wins.
+        return max(
+            trigramSimilarity(needle, candidate) * 0.80,
+            editSimilarity(needle, candidate) * 0.78
+        )
     }
 
     private static func trigramSimilarity(_ a: String, _ b: String) -> Double {
@@ -173,6 +196,36 @@ final class NutritionDatabase: Sendable {
         guard !left.isEmpty, !right.isEmpty else { return 0 }
         let shared = left.intersection(right).count
         return Double(2 * shared) / Double(left.count + right.count)
+    }
+
+    /// 1 for identical, falling off with each edit. Returns 0 unless the strings are a
+    /// plausible typo of one another — at most two edits apart and similar in length —
+    /// which also keeps the O(n·m) table small enough to run against every row.
+    private static func editSimilarity(_ a: String, _ b: String) -> Double {
+        let left = Array(a)
+        let right = Array(b)
+        guard !left.isEmpty, !right.isEmpty, abs(left.count - right.count) <= 2 else { return 0 }
+
+        var previous = Array(0...right.count)
+        var current = [Int](repeating: 0, count: right.count + 1)
+
+        for i in 1...left.count {
+            current[0] = i
+            var rowMinimum = i
+            for j in 1...right.count {
+                let substitution = previous[j - 1] + (left[i - 1] == right[j - 1] ? 0 : 1)
+                current[j] = min(previous[j] + 1, current[j - 1] + 1, substitution)
+                rowMinimum = min(rowMinimum, current[j])
+            }
+            // Every remaining row can only add to the distance, so once the best cell in
+            // a row exceeds the budget the answer is already too far away.
+            if rowMinimum > 2 { return 0 }
+            swap(&previous, &current)
+        }
+
+        let distance = previous[right.count]
+        guard distance <= 2 else { return 0 }
+        return 1 - Double(distance) / Double(max(left.count, right.count))
     }
 
     private static func trigrams(_ text: String) -> Set<String> {

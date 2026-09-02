@@ -37,11 +37,28 @@ enum FoodForm: String, Sendable, Equatable, CaseIterable {
 
     /// Longest match wins, and glass is checked first — "green smoothie bowl" is a
     /// bowl, but "iced coffee" should never be one.
+    ///
+    /// Matching is on whole words. Plain `contains` served steak in a glass, because
+    /// "s-TEA-k" contains "tea".
     static func infer(from name: String) -> FoodForm {
-        let needle = name.lowercased()
+        let lowered = name.lowercased()
+        let cleaned = String(lowered.map { $0.isLetter || $0.isNumber ? $0 : " " })
+        let words = Set(cleaned.split(separator: " ").map(String.init))
 
-        let glassHit = glassWords.filter { needle.contains($0) }.map(\.count).max()
-        let bowlHit = bowlWords.filter { needle.contains($0) }.map(\.count).max()
+        func longestMatch(in vocabulary: [String]) -> Int? {
+            var best: Int?
+            for phrase in vocabulary {
+                // Multi-word entries ("flat white") match as a phrase; single words
+                // must match a whole word.
+                let hit = phrase.contains(" ") ? lowered.contains(phrase) : words.contains(phrase)
+                guard hit else { continue }
+                best = max(best ?? 0, phrase.count)
+            }
+            return best
+        }
+
+        let glassHit = longestMatch(in: glassWords)
+        let bowlHit = longestMatch(in: bowlWords)
 
         switch (glassHit, bowlHit) {
         case (nil, nil): return .plate

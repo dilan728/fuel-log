@@ -68,7 +68,11 @@ final class LocalAgentBackend: AgentBackend {
             let quantity: Quantity
             if let unit = parsed.unit {
                 quantity = Quantity(amount: parsed.amount ?? 1, unit: unit)
-            } else if let amount = parsed.amount {
+            } else if let amount = parsed.amount, serving.unit.isCountLike {
+                // A bare count only multiplies a serving when the serving is itself a
+                // count. "a dozen almonds" against a per-handful row is not twelve
+                // handfuls, and we have no idea what one almond weighs — so fall
+                // through to a single serving rather than inventing a number.
                 quantity = Quantity(amount: amount * serving.amount, unit: serving.unit)
             } else {
                 quantity = serving
@@ -225,7 +229,7 @@ final class LocalAgentBackend: AgentBackend {
 
 // MARK: - Intent
 
-private enum Intent {
+enum Intent {
     case log
     case remove(subject: String)
     case status
@@ -239,8 +243,12 @@ private enum Intent {
         for verb in ["remove", "delete", "take off", "undo", "get rid of"] where lower.contains(verb) {
             var subject = lower
             if let range = subject.range(of: verb) { subject.removeSubrange(subject.startIndex..<range.upperBound) }
+            // Trim before stripping fillers: "remove the coffee" leaves " the coffee",
+            // and a leading space defeats every `hasPrefix` below.
+            subject = subject.trimmingCharacters(in: .whitespacesAndNewlines)
             for filler in ["the ", "that ", "my ", "a ", "an "] where subject.hasPrefix(filler) {
                 subject.removeFirst(filler.count)
+                break
             }
             return .remove(subject: subject.trimmingCharacters(in: .whitespacesAndNewlines))
         }
@@ -255,7 +263,7 @@ private enum Intent {
     }
 
     /// "my target is 2000", "goal: 2200 calories", "aim for 1800 a day"
-    private static func calorieTarget(in text: String) -> Double? {
+    static func calorieTarget(in text: String) -> Double? {
         let markers = ["target", "goal", "aim for", "budget"]
         guard markers.contains(where: text.contains) else { return nil }
         let scanner = Scanner(string: text)
@@ -267,7 +275,7 @@ private enum Intent {
 
 // MARK: - Phrase parsing
 
-private enum FoodPhrase {
+enum FoodPhrase {
 
     /// Splits "2 eggs, toast and a black coffee" into its three foods.
     static func split(_ text: String) -> [String] {
@@ -294,13 +302,24 @@ private enum FoodPhrase {
     /// no unit word. That distinction matters: "two eggs" means two of whatever the
     /// database calls one serving of egg, which is better than assuming "pieces".
     static func parse(_ phrase: String) -> (amount: Double?, unit: Quantity.Unit?, food: String) {
-        var words = phrase.split(separator: " ").map(String.init)
+        // People write "200g chicken", not "200 g chicken", so a leading token that is
+        // a number glued to a unit is split before anything else looks at it.
+        var words = phrase.split(separator: " ").flatMap { token -> [String] in
+            Self.splitGluedUnit(String(token))
+        }
         guard !words.isEmpty else { return (nil, nil, phrase) }
 
         var amount: Double?
         if let value = number(from: words[0]) {
             amount = value
+            let wasArticle = ["a", "an"].contains(words[0])
             words.removeFirst()
+            // "a dozen wings", "a couple of eggs": the article is not the count.
+            if wasArticle, let next = words.first, let multiple = number(from: next), multiple > 1 {
+                amount = multiple
+                words.removeFirst()
+                if words.first == "of" { words.removeFirst() }
+            }
         }
 
         var unit: Quantity.Unit?
@@ -323,18 +342,18 @@ private enum FoodPhrase {
         }
     }
 
-    private static let words: [String: Double] = [
+    static let words: [String: Double] = [
         "a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
         "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11,
         "twelve": 12, "half": 0.5, "couple": 2, "few": 3, "several": 3, "dozen": 12
     ]
 
-    private static func number(from word: String) -> Double? {
+    static func number(from word: String) -> Double? {
         if let value = Double(word) { return value }
         return words[word]
     }
 
-    private static let unitWords: [String: Quantity.Unit] = [
+    static let unitWords: [String: Quantity.Unit] = [
         "cup": .cup, "cups": .cup,
         "bowl": .bowl, "bowls": .bowl,
         "plate": .plate, "plates": .plate,
@@ -350,7 +369,16 @@ private enum FoodPhrase {
         "serving": .serving, "servings": .serving, "portion": .serving
     ]
 
-    private static func unit(from word: String) -> Quantity.Unit? {
+    static func unit(from word: String) -> Quantity.Unit? {
         unitWords[word]
+    }
+
+    /// "200g" -> ["200", "g"]. Anything else is returned unchanged.
+    static func splitGluedUnit(_ token: String) -> [String] {
+        let digits = token.prefix { $0.isNumber || $0 == "." }
+        guard !digits.isEmpty, digits.count < token.count else { return [token] }
+        let suffix = String(token.dropFirst(digits.count))
+        guard unitWords[suffix] != nil else { return [token] }
+        return [String(digits), suffix]
     }
 }
