@@ -102,3 +102,26 @@ so a wrapper left behind after its shader is gone still compiles and fails silen
 Reduce Motion freezes time-based shaders at a flattering frame and drops the chromatic
 split. Reduce Transparency replaces materials with `paperRaised` and a hairline. Every
 figure has a spelled-out accessibility label.
+
+## The icon
+
+A bowl in profile: ember on paper, no gradient, no shadow, no letterform. Drawn by
+`tools/make_icon.py` rather than by hand, so it is made of the same `Palette` values as
+the app and moves if they move.
+
+Three decisions came out of looking at it at 40pt rather than at 1024:
+
+- **The rim line cuts the circle above its centre.** Cut at the centre, the bowl is 2.4
+  times wider than deep and reads as a dish lying flat. Cut above it, the walls lean in
+  and it reads as a bowl.
+- **The lip overhangs by 30 units a side.** That is one pixel at 40pt, and it is the
+  only thing separating a bowl from a plain half-disc.
+- **There is no baseline rule.** An earlier draft set the bowl on the app's hairline,
+  which looked right at 180pt and turned into a grey smudge at 60pt. A mark that only
+  works at one size is not a mark.
+
+Light ships opaque — iOS rejects alpha in a primary icon. Dark and tinted carry alpha
+and are composited over the system's own ground.
+
+Run `python3 tools/make_icon.py --preview` to write a sheet at real home-screen sizes;
+judge it there, not in the artwork.

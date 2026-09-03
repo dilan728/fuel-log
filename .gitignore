@@ -7,3 +7,6 @@ xcuserdata/
 DerivedData/
 .DS_Store
 build/
+
+# Scratch output from tools/make_icon.py --preview
+tools/icon-preview.png
